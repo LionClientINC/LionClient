@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "lionclient",
+    "name": "LionClient",
+    "description": "A Forge 1.8.9 client mod with a right-shift click GUI.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["Lion"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]
