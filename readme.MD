@@ -1,0 +1,1 @@
+A client made for the community. Custom base, but made partially with AI, using examples from certain versions of Raven. How to use: put the .jar into your mods folder and launch. The ClickGUI bind is RSHIFT. Hover over modules for more than 2 seconds to see the description and suggestions.
