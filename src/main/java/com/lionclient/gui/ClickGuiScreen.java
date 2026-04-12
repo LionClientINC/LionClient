@@ -3,6 +3,7 @@ package com.lionclient.gui;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.module.ModuleManager;
+import com.lionclient.feature.setting.ActionSetting;
 import com.lionclient.feature.setting.BooleanSetting;
 import com.lionclient.feature.setting.EnumSetting;
 import com.lionclient.feature.setting.NumberSetting;
@@ -174,6 +175,11 @@ public final class ClickGuiScreen extends GuiScreen {
         }
 
         private void handleSettingClick(Setting setting, int mouseButton, Module module) {
+            if (setting instanceof ActionSetting && mouseButton == 0) {
+                ((ActionSetting) setting).run();
+                return;
+            }
+
             if (setting instanceof BooleanSetting && mouseButton == 0) {
                 ((BooleanSetting) setting).toggle();
                 return;

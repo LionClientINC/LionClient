@@ -1,5 +1,7 @@
 package com.lionclient.feature.setting;
 
+import com.lionclient.config.ConfigManager;
+
 public final class NumberSetting extends Setting {
     private final int min;
     private final int max;
@@ -20,14 +22,17 @@ public final class NumberSetting extends Setting {
 
     public void increment() {
         value = clamp(value + step);
+        ConfigManager.saveActiveConfig();
     }
 
     public void decrement() {
         value = clamp(value - step);
+        ConfigManager.saveActiveConfig();
     }
 
     public void setValue(int value) {
         this.value = clamp(value);
+        ConfigManager.saveActiveConfig();
     }
 
     @Override

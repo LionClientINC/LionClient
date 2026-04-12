@@ -1,7 +1,9 @@
 package com.lionclient.feature.module;
 
+import com.lionclient.config.ConfigManager;
 import com.lionclient.feature.module.impl.AutoClickerModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
+import com.lionclient.feature.module.impl.ConfigModule;
 import com.lionclient.feature.module.impl.SprintModule;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,6 +16,8 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 public final class ModuleManager {
     private final List<Module> modules = new ArrayList<Module>();
     private final Map<Category, List<Module>> modulesByCategory = new EnumMap<Category, List<Module>>(Category.class);
+    private final ConfigManager configManager;
+    private final ConfigModule configModule;
 
     public ModuleManager() {
         for (Category category : Category.values()) {
@@ -23,6 +27,10 @@ public final class ModuleManager {
         register(new SprintModule());
         register(new AutoClickerModule());
         register(new ClickRecorderModule());
+        configManager = new ConfigManager(this);
+        configModule = new ConfigModule(configManager);
+        register(configModule);
+        configManager.initialize();
     }
 
     private void register(Module module) {
@@ -60,5 +68,13 @@ public final class ModuleManager {
                 module.onRenderTick(event);
             }
         }
+    }
+
+    public ConfigManager getConfigManager() {
+        return configManager;
+    }
+
+    public void refreshConfigModule() {
+        configModule.rebuildSettings();
     }
 }

@@ -44,6 +44,12 @@ public final class LionClient {
         ClientRegistry.registerKeyBinding(clickGuiKey);
         KeybindHandler.register(moduleManager);
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(this);
+        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+            @Override
+            public void run() {
+                moduleManager.getConfigManager().saveCurrent();
+            }
+        }, "LionClient-ConfigSave"));
     }
 
     @SubscribeEvent

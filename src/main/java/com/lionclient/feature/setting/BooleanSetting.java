@@ -1,5 +1,7 @@
 package com.lionclient.feature.setting;
 
+import com.lionclient.config.ConfigManager;
+
 public final class BooleanSetting extends Setting {
     private boolean enabled;
 
@@ -14,10 +16,12 @@ public final class BooleanSetting extends Setting {
 
     public void toggle() {
         enabled = !enabled;
+        ConfigManager.saveActiveConfig();
     }
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+        ConfigManager.saveActiveConfig();
     }
 
     @Override

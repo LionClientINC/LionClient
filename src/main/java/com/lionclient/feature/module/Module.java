@@ -1,5 +1,6 @@
 package com.lionclient.feature.module;
 
+import com.lionclient.config.ConfigManager;
 import com.lionclient.feature.setting.Setting;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -38,6 +39,10 @@ public abstract class Module {
         settings.add(setting);
     }
 
+    protected void clearSettings() {
+        settings.clear();
+    }
+
     public List<Setting> getSettings() {
         return Collections.unmodifiableList(settings);
     }
@@ -69,6 +74,7 @@ public abstract class Module {
         } else {
             onDisable();
         }
+        ConfigManager.saveActiveConfig();
     }
 
     protected void onEnable() {
