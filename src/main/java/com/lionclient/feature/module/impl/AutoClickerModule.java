@@ -49,7 +49,7 @@ public final class AutoClickerModule extends Module {
     private Mode lastMode;
 
     public AutoClickerModule() {
-        super("AutoClicker", "Automatically clicks for you.", Category.COMBAT, Keyboard.KEY_R);
+        super("LeftClicker", "Automatically clicks for you.", Category.COMBAT, Keyboard.KEY_R);
         guiClickMethod = findGuiClickMethod();
         leftClickCounterField = findLeftClickCounterField();
         addSetting(mode);
