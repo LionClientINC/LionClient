@@ -3,6 +3,7 @@ package com.lionclient;
 import com.lionclient.feature.module.ModuleManager;
 import com.lionclient.gui.ClickGuiScreen;
 import com.lionclient.input.KeybindHandler;
+import com.lionclient.network.PacketDelayManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraftforge.client.event.MouseEvent;
@@ -25,6 +26,7 @@ public final class LionClient {
 
     private static LionClient instance;
     private final ModuleManager moduleManager = new ModuleManager();
+    private final PacketDelayManager packetDelayManager = new PacketDelayManager(moduleManager);
     private final ClickGuiScreen clickGuiScreen = new ClickGuiScreen(moduleManager);
     private final KeyBinding clickGuiKey = new KeyBinding("key.lionclient.clickgui", Keyboard.KEY_RSHIFT, "key.categories.lionclient");
 
@@ -69,6 +71,7 @@ public final class LionClient {
             }
         }
 
+        packetDelayManager.onClientTick();
         moduleManager.onClientTick();
     }
 

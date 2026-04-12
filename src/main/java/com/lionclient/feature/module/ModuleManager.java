@@ -5,6 +5,7 @@ import com.lionclient.feature.module.impl.AutoClickerModule;
 import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
 import com.lionclient.feature.module.impl.ConfigModule;
+import com.lionclient.feature.module.impl.FakeLagModule;
 import com.lionclient.feature.module.impl.HudModule;
 import com.lionclient.feature.module.impl.LegitScaffoldModule;
 import com.lionclient.feature.module.impl.PlayerEspModule;
@@ -16,6 +17,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import net.minecraft.network.Packet;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
@@ -37,6 +39,7 @@ public final class ModuleManager {
         register(new AutoClickerModule());
         register(new RightClickerModule());
         register(new ReachModule());
+        register(new FakeLagModule());
         register(new ClickRecorderModule());
         register(new ClickGuiModule());
         register(new PlayerEspModule());
@@ -98,6 +101,44 @@ public final class ModuleManager {
                 module.onRenderOverlay(event);
             }
         }
+    }
+
+    public int getOutboundPacketDelay(Packet<?> packet) {
+        int delay = 0;
+        for (Module module : modules) {
+            if (!module.isEnabled()) {
+                continue;
+            }
+
+            delay = Math.max(delay, module.getOutboundPacketDelay(packet));
+        }
+        return delay;
+    }
+
+    public void onInboundPacket(Packet<?> packet) {
+        for (Module module : modules) {
+            if (module.isEnabled()) {
+                module.onInboundPacket(packet);
+            }
+        }
+    }
+
+    public boolean isPacketDelayActive() {
+        for (Module module : modules) {
+            if (module.isEnabled() && module.isPacketDelayActive()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean consumeFlushRequest() {
+        for (Module module : modules) {
+            if (module.consumeFlushRequest()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public ConfigManager getConfigManager() {

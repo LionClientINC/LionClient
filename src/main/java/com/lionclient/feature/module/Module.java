@@ -5,6 +5,7 @@ import com.lionclient.feature.setting.Setting;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import net.minecraft.network.Packet;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
@@ -99,5 +100,20 @@ public abstract class Module {
     }
 
     public void onRenderOverlay(RenderGameOverlayEvent.Text event) {
+    }
+
+    public int getOutboundPacketDelay(Packet<?> packet) {
+        return 0;
+    }
+
+    public void onInboundPacket(Packet<?> packet) {
+    }
+
+    public boolean isPacketDelayActive() {
+        return false;
+    }
+
+    public boolean consumeFlushRequest() {
+        return false;
     }
 }
