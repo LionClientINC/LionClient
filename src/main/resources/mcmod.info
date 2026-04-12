@@ -1,13 +1,13 @@
 [
   {
-    "modid": "lionclient",
-    "name": "LionClient",
-    "description": "A Forge 1.8.9 client mod with a right-shift click GUI.",
+    "modid": "CleanKeyStrokes",
+    "name": "CleanKeyStrokes",
+    "description": "Clean Keystrokes",
     "version": "${version}",
     "mcversion": "${mcversion}",
     "url": "",
     "updateUrl": "",
-    "authorList": ["Lion"],
+    "authorList": ["LionClient"],
     "credits": "",
     "logoFile": "",
     "screenshots": [],
