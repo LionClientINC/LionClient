@@ -6,6 +6,7 @@ import com.lionclient.feature.module.ModuleManager;
 import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.setting.ActionSetting;
 import com.lionclient.feature.setting.BooleanSetting;
+import com.lionclient.feature.setting.DecimalSetting;
 import com.lionclient.feature.setting.EnumSetting;
 import com.lionclient.feature.setting.NumberSetting;
 import com.lionclient.feature.setting.Setting;
@@ -200,6 +201,16 @@ public final class ClickGuiScreen extends GuiScreen {
                 return;
             }
 
+            if (setting instanceof DecimalSetting) {
+                DecimalSetting decimal = (DecimalSetting) setting;
+                if (mouseButton == 0) {
+                    decimal.increment();
+                } else if (mouseButton == 1) {
+                    decimal.decrement();
+                }
+                return;
+            }
+
             if (setting instanceof EnumSetting && (mouseButton == 0 || mouseButton == 1)) {
                 EnumSetting<?> enumSetting = (EnumSetting<?>) setting;
                 if (mouseButton == 0) {
@@ -211,10 +222,6 @@ public final class ClickGuiScreen extends GuiScreen {
         }
 
         private void enforceNumberBounds(Module module) {
-            if (!"AutoClicker".equals(module.getName())) {
-                return;
-            }
-
             NumberSetting min = null;
             NumberSetting max = null;
             for (Setting setting : module.getSettings()) {

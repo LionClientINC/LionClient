@@ -7,6 +7,8 @@ import com.lionclient.feature.module.impl.ClickRecorderModule;
 import com.lionclient.feature.module.impl.ConfigModule;
 import com.lionclient.feature.module.impl.HudModule;
 import com.lionclient.feature.module.impl.PlayerEspModule;
+import com.lionclient.feature.module.impl.ReachModule;
+import com.lionclient.feature.module.impl.RightClickerModule;
 import com.lionclient.feature.module.impl.SprintModule;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,6 +33,8 @@ public final class ModuleManager {
 
         register(new SprintModule());
         register(new AutoClickerModule());
+        register(new RightClickerModule());
+        register(new ReachModule());
         register(new ClickRecorderModule());
         register(new ClickGuiModule());
         register(new PlayerEspModule());

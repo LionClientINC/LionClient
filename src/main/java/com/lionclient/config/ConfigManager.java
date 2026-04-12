@@ -10,6 +10,7 @@ import com.lionclient.feature.module.ModuleManager;
 import com.lionclient.feature.module.impl.ClickPatternStore;
 import com.lionclient.feature.setting.ActionSetting;
 import com.lionclient.feature.setting.BooleanSetting;
+import com.lionclient.feature.setting.DecimalSetting;
 import com.lionclient.feature.setting.EnumSetting;
 import com.lionclient.feature.setting.NumberSetting;
 import com.lionclient.feature.setting.Setting;
@@ -164,6 +165,8 @@ public final class ConfigManager {
                     JsonElement value = settingsJson.get(setting.getName());
                     if (setting instanceof BooleanSetting) {
                         ((BooleanSetting) setting).setEnabled(value.getAsBoolean());
+                    } else if (setting instanceof DecimalSetting) {
+                        ((DecimalSetting) setting).setValue(value.getAsDouble());
                     } else if (setting instanceof NumberSetting) {
                         ((NumberSetting) setting).setValue(value.getAsInt());
                     } else if (setting instanceof EnumSetting) {
@@ -209,6 +212,8 @@ public final class ConfigManager {
                 }
                 if (setting instanceof BooleanSetting) {
                     settingsJson.addProperty(setting.getName(), ((BooleanSetting) setting).isEnabled());
+                } else if (setting instanceof DecimalSetting) {
+                    settingsJson.addProperty(setting.getName(), ((DecimalSetting) setting).getValue());
                 } else if (setting instanceof NumberSetting) {
                     settingsJson.addProperty(setting.getName(), ((NumberSetting) setting).getValue());
                 } else if (setting instanceof EnumSetting) {
