@@ -5,6 +5,8 @@ import com.lionclient.feature.module.impl.AutoClickerModule;
 import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
 import com.lionclient.feature.module.impl.ConfigModule;
+import com.lionclient.feature.module.impl.HudModule;
+import com.lionclient.feature.module.impl.PlayerEspModule;
 import com.lionclient.feature.module.impl.SprintModule;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -12,6 +14,8 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public final class ModuleManager {
@@ -29,6 +33,8 @@ public final class ModuleManager {
         register(new AutoClickerModule());
         register(new ClickRecorderModule());
         register(new ClickGuiModule());
+        register(new PlayerEspModule());
+        register(new HudModule());
         configManager = new ConfigManager(this);
         configModule = new ConfigModule(configManager);
         register(configModule);
@@ -68,6 +74,22 @@ public final class ModuleManager {
         for (Module module : modules) {
             if (module.isEnabled()) {
                 module.onRenderTick(event);
+            }
+        }
+    }
+
+    public void onRenderWorld(RenderWorldLastEvent event) {
+        for (Module module : modules) {
+            if (module.isEnabled()) {
+                module.onRenderWorld(event);
+            }
+        }
+    }
+
+    public void onRenderOverlay(RenderGameOverlayEvent.Text event) {
+        for (Module module : modules) {
+            if (module.isEnabled()) {
+                module.onRenderOverlay(event);
             }
         }
     }

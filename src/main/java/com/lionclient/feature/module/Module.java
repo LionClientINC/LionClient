@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public abstract class Module {
@@ -90,5 +92,11 @@ public abstract class Module {
     }
 
     public void onRenderTick(TickEvent.RenderTickEvent event) {
+    }
+
+    public void onRenderWorld(RenderWorldLastEvent event) {
+    }
+
+    public void onRenderOverlay(RenderGameOverlayEvent.Text event) {
     }
 }

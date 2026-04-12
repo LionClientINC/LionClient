@@ -6,6 +6,8 @@ import com.lionclient.input.KeybindHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.client.registry.ClientRegistry;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
@@ -82,5 +84,15 @@ public final class LionClient {
         }
 
         moduleManager.onRenderTick(event);
+    }
+
+    @SubscribeEvent
+    public void onRenderWorld(RenderWorldLastEvent event) {
+        moduleManager.onRenderWorld(event);
+    }
+
+    @SubscribeEvent
+    public void onRenderOverlay(RenderGameOverlayEvent.Text event) {
+        moduleManager.onRenderOverlay(event);
     }
 }
