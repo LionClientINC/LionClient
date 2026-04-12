@@ -16,7 +16,7 @@ public final class PlayerEspModule extends Module {
     private final NumberSetting blue = new NumberSetting("Blue", 0, 255, 5, 60);
 
     public PlayerEspModule() {
-        super("PlayerESP", "Draws a 3D box around other players.", Category.RENDER, Keyboard.KEY_NONE);
+        super("PlayerESP", "Draws a box around other players trough walls.", Category.RENDER, Keyboard.KEY_NONE);
         addSetting(red);
         addSetting(green);
         addSetting(blue);

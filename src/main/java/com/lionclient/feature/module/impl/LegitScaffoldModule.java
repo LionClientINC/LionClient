@@ -23,7 +23,7 @@ public final class LegitScaffoldModule extends Module {
     private long sneakReleaseTime;
 
     public LegitScaffoldModule() {
-        super("LegitScaffold", "Sneaks at block edges while backward bridging.", Category.MOVEMENT, Keyboard.KEY_NONE);
+        super("LegitScaffold", "Sneaks at block edges.", Category.MOVEMENT, Keyboard.KEY_NONE);
         addSetting(mode);
         addSetting(sneakDelay);
     }
