@@ -3,6 +3,7 @@ package com.lionclient.gui;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.module.ModuleManager;
+import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.setting.ActionSetting;
 import com.lionclient.feature.setting.BooleanSetting;
 import com.lionclient.feature.setting.EnumSetting;
@@ -28,7 +29,8 @@ public final class ClickGuiScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
-        drawCenteredString(this.fontRendererObj, "LionClient", this.width / 2, 10, 0x8B0000);
+        int accent = ClickGuiModule.getAccentColor();
+        drawCenteredString(this.fontRendererObj, "LionClient", this.width / 2, 10, accent);
 
         for (CategoryPanel panel : panels) {
             panel.draw(mouseX, mouseY, fontRendererObj);
@@ -94,22 +96,23 @@ public final class ClickGuiScreen extends GuiScreen {
         }
 
         private void draw(int mouseX, int mouseY, net.minecraft.client.gui.FontRenderer fontRenderer) {
+            int accent = ClickGuiModule.getAccentColor();
             if (dragging) {
                 x = mouseX - dragOffsetX;
                 y = mouseY - dragOffsetY;
             }
 
-            Gui.drawRect(x, y, x + WIDTH, y + HEADER_HEIGHT, 0xFF20253A);
+            Gui.drawRect(x, y, x + WIDTH, y + HEADER_HEIGHT, 0xFF000000 | accent);
             Gui.drawRect(x, y + HEADER_HEIGHT, x + WIDTH, y + getContentHeight(), 0xB0101018);
             fontRenderer.drawStringWithShadow(category.name(), x + 4, y + 4, 0xFFFFFFFF);
 
             int rowY = y + HEADER_HEIGHT;
             for (Module module : modules) {
-                int color = module.isEnabled() ? 0xFF4CAF50 : 0xFF8A8F9E;
+                int color = module.isEnabled() ? (0xFF000000 | accent) : 0xFF8A8F9E;
                 Gui.drawRect(x + 2, rowY + 1, x + WIDTH - 2, rowY + ROW_HEIGHT - 1, 0x80262B3E);
                 fontRenderer.drawString(module.getName(), x + 6, rowY + 3, color);
                 if (!module.getSettings().isEmpty()) {
-                    fontRenderer.drawString("...", x + WIDTH - 16, rowY + 3, 0xFFB8C0D9);
+                    fontRenderer.drawString("...", x + WIDTH - 16, rowY + 3, 0xFF000000 | accent);
                 }
                 rowY += ROW_HEIGHT;
 
@@ -117,7 +120,7 @@ public final class ClickGuiScreen extends GuiScreen {
                     for (Setting setting : module.getSettings()) {
                         Gui.drawRect(x + 4, rowY, x + WIDTH - 4, rowY + ROW_HEIGHT, 0x9040485C);
                         fontRenderer.drawString(setting.getName(), x + 6, rowY + 3, 0xFFE8EAF1);
-                        fontRenderer.drawString(setting.getValueText(), x + WIDTH - 6 - fontRenderer.getStringWidth(setting.getValueText()), rowY + 3, 0xFF8FD694);
+                        fontRenderer.drawString(setting.getValueText(), x + WIDTH - 6 - fontRenderer.getStringWidth(setting.getValueText()), rowY + 3, 0xFF000000 | accent);
                         rowY += ROW_HEIGHT;
                     }
                 }

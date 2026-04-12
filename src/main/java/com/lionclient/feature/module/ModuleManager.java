@@ -2,6 +2,7 @@ package com.lionclient.feature.module;
 
 import com.lionclient.config.ConfigManager;
 import com.lionclient.feature.module.impl.AutoClickerModule;
+import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
 import com.lionclient.feature.module.impl.ConfigModule;
 import com.lionclient.feature.module.impl.SprintModule;
@@ -27,6 +28,7 @@ public final class ModuleManager {
         register(new SprintModule());
         register(new AutoClickerModule());
         register(new ClickRecorderModule());
+        register(new ClickGuiModule());
         configManager = new ConfigManager(this);
         configModule = new ConfigModule(configManager);
         register(configModule);
