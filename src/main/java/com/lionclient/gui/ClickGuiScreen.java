@@ -28,7 +28,7 @@ public final class ClickGuiScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
-        drawCenteredString(this.fontRendererObj, "LionClient ClickGUI", this.width / 2, 10, 0xFFFFFF);
+        drawCenteredString(this.fontRendererObj, "LionClient", this.width / 2, 10, 0x8B0000);
 
         for (CategoryPanel panel : panels) {
             panel.draw(mouseX, mouseY, fontRendererObj);
