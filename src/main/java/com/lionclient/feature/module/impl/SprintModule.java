@@ -4,6 +4,7 @@ import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.client.settings.KeyBinding;
 import org.lwjgl.input.Keyboard;
 
 public final class SprintModule extends Module {
@@ -19,9 +20,21 @@ public final class SprintModule extends Module {
             return;
         }
 
+        int sprintKey = minecraft.gameSettings.keyBindSprint.getKeyCode();
         boolean movingForward = player.movementInput != null && player.movementInput.moveForward > 0.0F;
-        if (movingForward && !player.isSneaking() && player.getFoodStats().getFoodLevel() > 6) {
-            player.setSprinting(true);
+        boolean shouldHoldSprint = minecraft.currentScreen == null
+            && movingForward
+            && !player.isSneaking()
+            && player.getFoodStats().getFoodLevel() > 6;
+
+        KeyBinding.setKeyBindState(sprintKey, shouldHoldSprint);
+    }
+
+    @Override
+    protected void onDisable() {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.gameSettings != null) {
+            KeyBinding.setKeyBindState(minecraft.gameSettings.keyBindSprint.getKeyCode(), false);
         }
     }
 }

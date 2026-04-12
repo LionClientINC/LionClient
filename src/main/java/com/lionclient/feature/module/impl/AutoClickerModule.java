@@ -29,6 +29,7 @@ import org.lwjgl.input.Mouse;
 public final class AutoClickerModule extends Module {
     private final Random random = new Random();
     private final Method guiClickMethod;
+    private final Field leftClickCounterField;
 
     private final EnumSetting<Mode> mode = new EnumSetting<Mode>("Mode", Mode.values(), Mode.NORMAL);
     private final BooleanSetting breakBlocks = new BooleanSetting("Break Blocks", true);
@@ -50,6 +51,7 @@ public final class AutoClickerModule extends Module {
     public AutoClickerModule() {
         super("AutoClicker", "Automatically clicks for you.", Category.COMBAT, Keyboard.KEY_R);
         guiClickMethod = findGuiClickMethod();
+        leftClickCounterField = findLeftClickCounterField();
         addSetting(mode);
         addSetting(breakBlocks);
         addSetting(weaponOnly);
@@ -76,6 +78,7 @@ public final class AutoClickerModule extends Module {
             return;
         }
 
+        removeClickDelay(minecraft);
         normalizeRanges();
 
         if (mode.getValue() != lastMode) {
@@ -243,12 +246,18 @@ public final class AutoClickerModule extends Module {
         int max = Math.max(min, maxCps.getValue());
         double cps = min + (random.nextDouble() * (max - min + 1));
         if (burstTicks <= 0) {
-            burstTicks = 4 + random.nextInt(7);
+            burstTicks = 3 + random.nextInt(9);
         }
         burstTicks--;
-        cps += Math.sin(System.nanoTime() / 70000000.0D) * 0.8D;
-        cps += random.nextGaussian() * 0.35D;
-        cps += burstTicks % 3 == 0 ? -0.6D : 0.25D;
+        cps += Math.sin(System.nanoTime() / 65000000.0D) * 0.95D;
+        cps += random.nextGaussian() * 0.55D;
+        cps += burstTicks % 4 == 0 ? -0.85D : 0.35D;
+        if (random.nextDouble() < 0.08D) {
+            cps -= 0.6D + (random.nextDouble() * 0.9D);
+        }
+        if (random.nextDouble() < 0.05D) {
+            cps += 0.4D + (random.nextDouble() * 0.8D);
+        }
         cps = Math.max(1.0D, cps);
         return Math.max(1L, Math.round(1000.0D / cps));
     }
@@ -263,6 +272,17 @@ public final class AutoClickerModule extends Module {
         if (buttons != null && buttons.capacity() > mouseButton) {
             buttons.put(mouseButton, (byte) (held ? 1 : 0));
             ObfuscationReflectionHelper.setPrivateValue(Mouse.class, null, buttons, "buttons");
+        }
+    }
+
+    private void removeClickDelay(Minecraft minecraft) {
+        if (leftClickCounterField == null || !minecraft.inGameHasFocus || minecraft.thePlayer.capabilities.isCreativeMode) {
+            return;
+        }
+
+        try {
+            leftClickCounterField.setInt(minecraft, 0);
+        } catch (IllegalAccessException ignored) {
         }
     }
 
@@ -311,6 +331,16 @@ public final class AutoClickerModule extends Module {
                 method.setAccessible(true);
             }
             return method;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Field findLeftClickCounterField() {
+        try {
+            Field field = ReflectionHelper.findField(Minecraft.class, "field_71429_W", "leftClickCounter");
+            field.setAccessible(true);
+            return field;
         } catch (Exception ignored) {
             return null;
         }
