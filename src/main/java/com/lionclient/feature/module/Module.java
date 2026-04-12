@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public abstract class Module {
     private final String name;
@@ -80,5 +81,8 @@ public abstract class Module {
     }
 
     public void onMouseEvent(MouseEvent event) {
+    }
+
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
     }
 }

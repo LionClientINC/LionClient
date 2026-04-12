@@ -9,6 +9,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public final class ModuleManager {
     private final List<Module> modules = new ArrayList<Module>();
@@ -49,6 +50,14 @@ public final class ModuleManager {
         for (Module module : modules) {
             if (module.isEnabled()) {
                 module.onMouseEvent(event);
+            }
+        }
+    }
+
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        for (Module module : modules) {
+            if (module.isEnabled()) {
+                module.onRenderTick(event);
             }
         }
     }

@@ -8,6 +8,7 @@ import com.lionclient.feature.setting.NumberSetting;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Random;
 import net.minecraft.client.Minecraft;
@@ -17,14 +18,17 @@ import net.minecraft.client.gui.inventory.GuiInventory;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.MovingObjectPosition;
+import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.ObfuscationReflectionHelper;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 public final class AutoClickerModule extends Module {
     private final Random random = new Random();
-    private final Method clickMouseMethod;
     private final Method guiClickMethod;
-    private final Field leftClickCounterField;
 
     private final EnumSetting<Mode> mode = new EnumSetting<Mode>("Mode", Mode.values(), Mode.NORMAL);
     private final BooleanSetting breakBlocks = new BooleanSetting("Break Blocks", true);
@@ -34,18 +38,18 @@ public final class AutoClickerModule extends Module {
     private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 13);
     private final NumberSetting jitterStrength = new NumberSetting("Jitter", 0, 10, 1, 0);
 
-    private long nextClickAt;
-    private long lastInventoryClickAt;
+    private long lastClick;
+    private long holdUntil;
+    private long recordNextClickTime;
     private int burstTicks;
     private int recordIndex;
+    private boolean leftDown;
     private boolean recordNoticeShown;
     private Mode lastMode;
 
     public AutoClickerModule() {
-        super("AutoClicker", "Automates clicks with normal and recorded modes.", Category.COMBAT, Keyboard.KEY_R);
-        clickMouseMethod = findClickMouseMethod();
+        super("AutoClicker", "Automatically clicks for you.", Category.COMBAT, Keyboard.KEY_R);
         guiClickMethod = findGuiClickMethod();
-        leftClickCounterField = findLeftClickCounterField();
         addSetting(mode);
         addSetting(breakBlocks);
         addSetting(weaponOnly);
@@ -57,68 +61,75 @@ public final class AutoClickerModule extends Module {
 
     @Override
     protected void onEnable() {
-        resetRuntimeState();
+        resetClickState();
     }
 
     @Override
     protected void onDisable() {
-        KeyBinding.setKeyBindState(Minecraft.getMinecraft().gameSettings.keyBindAttack.getKeyCode(), false);
+        resetClickState();
     }
 
     @Override
-    public void onClientTick() {
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
         Minecraft minecraft = Minecraft.getMinecraft();
-        if (minecraft.thePlayer == null) {
-            resetRuntimeState();
+        if (minecraft.thePlayer == null || minecraft.theWorld == null) {
             return;
         }
 
         normalizeRanges();
 
         if (mode.getValue() != lastMode) {
-            resetRuntimeState();
+            resetClickState();
             lastMode = mode.getValue();
         }
 
-        if (minecraft.currentScreen != null) {
-            handleInventoryFill(minecraft);
+        if (minecraft.currentScreen != null || !minecraft.inGameHasFocus) {
+            doInventoryClick(minecraft);
             return;
         }
 
-        if (!minecraft.inGameHasFocus || !Mouse.isButtonDown(0)) {
-            recordNoticeShown = false;
+        Mouse.poll();
+        if (!Mouse.isButtonDown(0)) {
+            resetPhysicalState();
             return;
         }
 
         if (weaponOnly.isEnabled() && !isHoldingWeapon(minecraft)) {
+            resetPhysicalState();
             return;
         }
 
-        if (breakBlocks.isEnabled() && isBreakingBlock(minecraft)) {
+        if (breakBlock(minecraft)) {
             return;
         }
 
         applyJitter(minecraft);
 
         if (mode.getValue() == Mode.RECORD) {
-            handleRecordedPattern(minecraft);
+            recordClick();
             return;
         }
 
-        handleNormalMode(minecraft);
+        normalClick();
     }
 
-    private void handleNormalMode(Minecraft minecraft) {
+    private void normalClick() {
+        long delay = computeDelayMillis();
+        long holdLength = Math.max(1L, delay / 2L);
         long now = System.currentTimeMillis();
-        if (now < nextClickAt) {
-            return;
-        }
 
-        performClick(minecraft);
-        nextClickAt = now + computeDelayMillis();
+        if (now - lastClick >= delay) {
+            lastClick = now;
+            holdUntil = now + holdLength;
+            sendClick(true);
+            leftDown = true;
+        } else if (leftDown && now >= holdUntil) {
+            sendClick(false);
+            leftDown = false;
+        }
     }
 
-    private void handleRecordedPattern(Minecraft minecraft) {
+    private void recordClick() {
         List<Integer> delays = ClickPatternStore.getDelays();
         if (delays.isEmpty()) {
             if (!recordNoticeShown) {
@@ -129,18 +140,49 @@ public final class AutoClickerModule extends Module {
         }
 
         long now = System.currentTimeMillis();
-        if (now < nextClickAt) {
+        if (recordNextClickTime < 0L) {
+            recordNextClickTime = now;
+        }
+
+        if (now < recordNextClickTime) {
             return;
         }
 
-        performClick(minecraft);
-        int delay = delays.get(recordIndex);
-        recordIndex = (recordIndex + 1) % delays.size();
-        nextClickAt = now + Math.max(0, delay);
+        sendClick(true);
+        sendClick(false);
+
+        recordIndex++;
+        if (recordIndex >= delays.size()) {
+            recordIndex = 0;
+        }
+
+        recordNextClickTime = now + Math.max(0, delays.get(recordIndex).intValue());
         recordNoticeShown = false;
     }
 
-    private void handleInventoryFill(Minecraft minecraft) {
+    private void sendClick(boolean pressed) {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        int key = minecraft.gameSettings.keyBindAttack.getKeyCode();
+        KeyBinding.setKeyBindState(key, pressed);
+        setMouseButtonState(0, pressed);
+        if (pressed) {
+            KeyBinding.onTick(key);
+        }
+    }
+
+    private boolean breakBlock(Minecraft minecraft) {
+        MovingObjectPosition hitResult = minecraft.objectMouseOver;
+        if (!breakBlocks.isEnabled() || hitResult == null || hitResult.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
+            return false;
+        }
+
+        int key = minecraft.gameSettings.keyBindAttack.getKeyCode();
+        KeyBinding.setKeyBindState(key, true);
+        KeyBinding.onTick(key);
+        return true;
+    }
+
+    private void doInventoryClick(Minecraft minecraft) {
         if (!inventoryFill.isEnabled()) {
             return;
         }
@@ -149,25 +191,23 @@ public final class AutoClickerModule extends Module {
             return;
         }
 
-        boolean shiftDown = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
+        boolean shiftDown = Keyboard.isKeyDown(Keyboard.KEY_RSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_LSHIFT);
         if (!Mouse.isButtonDown(0) || !shiftDown) {
+            resetClickState();
             return;
         }
 
         long now = System.currentTimeMillis();
-        if (now < lastInventoryClickAt) {
+        long delay = computeDelayMillis();
+        if (now - lastClick < delay) {
             return;
         }
 
-        clickInsideGui(minecraft, minecraft.currentScreen);
-        lastInventoryClickAt = now + computeDelayMillis();
+        lastClick = now;
+        inInventoryClick(minecraft.currentScreen, minecraft);
     }
 
-    private void clickInsideGui(Minecraft minecraft, GuiScreen guiScreen) {
-        if (guiClickMethod == null) {
-            return;
-        }
-
+    private void inInventoryClick(GuiScreen guiScreen, Minecraft minecraft) {
         int mouseX = Mouse.getX() * guiScreen.width / minecraft.displayWidth;
         int mouseY = guiScreen.height - Mouse.getY() * guiScreen.height / minecraft.displayHeight - 1;
 
@@ -177,26 +217,16 @@ public final class AutoClickerModule extends Module {
         }
     }
 
-    private void performClick(Minecraft minecraft) {
-        if (clickMouseMethod == null) {
+    private void applyJitter(Minecraft minecraft) {
+        int strength = jitterStrength.getValue();
+        if (strength <= 0) {
             return;
         }
 
-        try {
-            if (leftClickCounterField != null) {
-                leftClickCounterField.setInt(minecraft, 0);
-            }
-            clickMouseMethod.invoke(minecraft);
-        } catch (IllegalAccessException | InvocationTargetException ignored) {
-        }
-    }
-
-    private boolean isBreakingBlock(Minecraft minecraft) {
-        MovingObjectPosition hitResult = minecraft.objectMouseOver;
-        return minecraft.playerController != null
-            && minecraft.playerController.getIsHittingBlock()
-            && hitResult != null
-            && hitResult.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK;
+        float yawDelta = (random.nextBoolean() ? 1 : -1) * random.nextFloat() * (strength * 0.45F);
+        float pitchDelta = (random.nextBoolean() ? 1 : -1) * random.nextFloat() * (strength * 0.2F);
+        minecraft.thePlayer.rotationYaw += yawDelta;
+        minecraft.thePlayer.rotationPitch = clampPitch(minecraft.thePlayer.rotationPitch + pitchDelta);
     }
 
     private boolean isHoldingWeapon(Minecraft minecraft) {
@@ -223,20 +253,31 @@ public final class AutoClickerModule extends Module {
         return Math.max(1L, Math.round(1000.0D / cps));
     }
 
-    private void applyJitter(Minecraft minecraft) {
-        int strength = jitterStrength.getValue();
-        if (strength <= 0) {
-            return;
-        }
+    private void setMouseButtonState(int mouseButton, boolean held) {
+        MouseEvent event = new MouseEvent();
+        ObfuscationReflectionHelper.setPrivateValue(MouseEvent.class, event, Integer.valueOf(mouseButton), "button");
+        ObfuscationReflectionHelper.setPrivateValue(MouseEvent.class, event, Boolean.valueOf(held), "buttonstate");
+        MinecraftForge.EVENT_BUS.post(event);
 
-        float yawDelta = (random.nextFloat() - 0.5F) * (0.3F * strength);
-        float pitchDelta = (random.nextFloat() - 0.5F) * (0.18F * strength);
-        minecraft.thePlayer.rotationYaw += yawDelta;
-        minecraft.thePlayer.rotationPitch = clampPitch(minecraft.thePlayer.rotationPitch + pitchDelta);
+        ByteBuffer buttons = ObfuscationReflectionHelper.getPrivateValue(Mouse.class, null, "buttons");
+        if (buttons != null && buttons.capacity() > mouseButton) {
+            buttons.put(mouseButton, (byte) (held ? 1 : 0));
+            ObfuscationReflectionHelper.setPrivateValue(Mouse.class, null, buttons, "buttons");
+        }
     }
 
-    private float clampPitch(float pitch) {
-        return Math.max(-90.0F, Math.min(90.0F, pitch));
+    private void resetClickState() {
+        lastClick = 0L;
+        holdUntil = 0L;
+        recordIndex = 0;
+        recordNextClickTime = -1L;
+        recordNoticeShown = false;
+        resetPhysicalState();
+    }
+
+    private void resetPhysicalState() {
+        leftDown = false;
+        sendClick(false);
     }
 
     private void normalizeRanges() {
@@ -245,13 +286,8 @@ public final class AutoClickerModule extends Module {
         }
     }
 
-    private void resetRuntimeState() {
-        nextClickAt = 0L;
-        lastInventoryClickAt = 0L;
-        burstTicks = 0;
-        recordIndex = 0;
-        recordNoticeShown = false;
-        lastMode = mode.getValue();
+    private float clampPitch(float pitch) {
+        return Math.max(-90.0F, Math.min(90.0F, pitch));
     }
 
     private void sendChat(String text) {
@@ -261,31 +297,20 @@ public final class AutoClickerModule extends Module {
         }
     }
 
-    private Method findClickMouseMethod() {
-        try {
-            Method method = Minecraft.class.getDeclaredMethod("clickMouse");
-            method.setAccessible(true);
-            return method;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
     private Method findGuiClickMethod() {
         try {
-            Method method = GuiScreen.class.getDeclaredMethod("mouseClicked", Integer.TYPE, Integer.TYPE, Integer.TYPE);
-            method.setAccessible(true);
+            Method method = ReflectionHelper.findMethod(
+                GuiScreen.class,
+                null,
+                new String[]{"func_73864_a", "mouseClicked"},
+                Integer.TYPE,
+                Integer.TYPE,
+                Integer.TYPE
+            );
+            if (method != null) {
+                method.setAccessible(true);
+            }
             return method;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private Field findLeftClickCounterField() {
-        try {
-            Field field = Minecraft.class.getDeclaredField("leftClickCounter");
-            field.setAccessible(true);
-            return field;
         } catch (Exception ignored) {
             return null;
         }

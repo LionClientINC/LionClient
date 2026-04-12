@@ -68,4 +68,13 @@ public final class LionClient {
     public void onMouseInput(MouseEvent event) {
         moduleManager.onMouseEvent(event);
     }
+
+    @SubscribeEvent
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+
+        moduleManager.onRenderTick(event);
+    }
 }
