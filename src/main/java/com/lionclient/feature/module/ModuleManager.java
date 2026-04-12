@@ -6,6 +6,7 @@ import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
 import com.lionclient.feature.module.impl.ConfigModule;
 import com.lionclient.feature.module.impl.HudModule;
+import com.lionclient.feature.module.impl.LegitScaffoldModule;
 import com.lionclient.feature.module.impl.PlayerEspModule;
 import com.lionclient.feature.module.impl.ReachModule;
 import com.lionclient.feature.module.impl.RightClickerModule;
@@ -32,6 +33,7 @@ public final class ModuleManager {
         }
 
         register(new SprintModule());
+        register(new LegitScaffoldModule());
         register(new AutoClickerModule());
         register(new RightClickerModule());
         register(new ReachModule());

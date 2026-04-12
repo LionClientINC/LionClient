@@ -2,10 +2,12 @@ package com.lionclient.feature.module.impl;
 
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
+import com.lionclient.feature.setting.BooleanSetting;
 import com.lionclient.feature.setting.NumberSetting;
 import java.util.Random;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
+import net.minecraft.item.ItemBlock;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
@@ -13,6 +15,7 @@ import org.lwjgl.input.Mouse;
 public final class RightClickerModule extends Module {
     private final Random random = new Random();
 
+    private final BooleanSetting onlyBlocks = new BooleanSetting("Only Blocks", false);
     private final NumberSetting minCps = new NumberSetting("Min CPS", 1, 25, 1, 9);
     private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 13);
     private final NumberSetting jitterStrength = new NumberSetting("Jitter", 0, 10, 1, 0);
@@ -24,6 +27,7 @@ public final class RightClickerModule extends Module {
 
     public RightClickerModule() {
         super("RightClicker", "Automatically right-clicks for you.", Category.COMBAT, Keyboard.KEY_NONE);
+        addSetting(onlyBlocks);
         addSetting(minCps);
         addSetting(maxCps);
         addSetting(jitterStrength);
@@ -54,6 +58,11 @@ public final class RightClickerModule extends Module {
 
         Mouse.poll();
         if (!Mouse.isButtonDown(1)) {
+            resetPhysicalState();
+            return;
+        }
+
+        if (onlyBlocks.isEnabled() && !isHoldingBlock(minecraft)) {
             resetPhysicalState();
             return;
         }
@@ -135,6 +144,11 @@ public final class RightClickerModule extends Module {
         if (maxCps.getValue() < minCps.getValue()) {
             maxCps.setValue(minCps.getValue());
         }
+    }
+
+    private boolean isHoldingBlock(Minecraft minecraft) {
+        return minecraft.thePlayer.getHeldItem() != null
+            && minecraft.thePlayer.getHeldItem().getItem() instanceof ItemBlock;
     }
 
     private float clampPitch(float pitch) {

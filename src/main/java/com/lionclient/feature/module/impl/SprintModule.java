@@ -9,7 +9,7 @@ import org.lwjgl.input.Keyboard;
 
 public final class SprintModule extends Module {
     public SprintModule() {
-        super("Sprint", "Automatically keeps you sprinting.", Category.MOVEMENT, Keyboard.KEY_G);
+        super("Sprint", "Automatically keeps you sprinting.", Category.MOVEMENT, Keyboard.KEY_NONE);
     }
 
     @Override

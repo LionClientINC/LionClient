@@ -55,6 +55,7 @@ public abstract class Module {
 
     public void setKeyCode(int keyCode) {
         this.keyCode = keyCode;
+        ConfigManager.saveActiveConfig();
     }
 
     public boolean isEnabled() {

@@ -152,6 +152,10 @@ public final class ConfigManager {
                     module.setEnabled(moduleJson.get("enabled").getAsBoolean());
                 }
 
+                if (moduleJson.has("keyCode")) {
+                    module.setKeyCode(moduleJson.get("keyCode").getAsInt());
+                }
+
                 JsonObject settingsJson = moduleJson.has("settings") ? moduleJson.getAsJsonObject("settings") : null;
                 if (settingsJson == null) {
                     continue;
@@ -204,6 +208,7 @@ public final class ConfigManager {
         for (Module module : moduleManager.getModules()) {
             JsonObject moduleJson = new JsonObject();
             moduleJson.addProperty("enabled", module.isEnabled());
+            moduleJson.addProperty("keyCode", module.getKeyCode());
 
             JsonObject settingsJson = new JsonObject();
             for (Setting setting : module.getSettings()) {
