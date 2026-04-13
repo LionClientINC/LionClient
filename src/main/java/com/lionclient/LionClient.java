@@ -5,18 +5,15 @@ import com.lionclient.gui.ClickGuiScreen;
 import com.lionclient.input.KeybindHandler;
 import com.lionclient.network.PacketDelayManager;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.settings.KeyBinding;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
-import net.minecraftforge.fml.client.registry.ClientRegistry;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.input.Keyboard;
 
 @Mod(modid = LionClient.MOD_ID, name = LionClient.NAME, version = LionClient.VERSION, clientSideOnly = true)
 public final class LionClient {
@@ -28,7 +25,6 @@ public final class LionClient {
     private final ModuleManager moduleManager = new ModuleManager();
     private final PacketDelayManager packetDelayManager = new PacketDelayManager(moduleManager);
     private final ClickGuiScreen clickGuiScreen = new ClickGuiScreen(moduleManager);
-    private final KeyBinding clickGuiKey = new KeyBinding("key.lionclient.clickgui", Keyboard.KEY_RSHIFT, "key.categories.lionclient");
 
     public static LionClient getInstance() {
         return instance;
@@ -45,7 +41,6 @@ public final class LionClient {
 
     @EventHandler
     public void onInit(FMLInitializationEvent event) {
-        ClientRegistry.registerKeyBinding(clickGuiKey);
         KeybindHandler.register(moduleManager);
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(this);
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
@@ -62,17 +57,17 @@ public final class LionClient {
             return;
         }
 
-        while (clickGuiKey.isPressed()) {
-            Minecraft minecraft = Minecraft.getMinecraft();
-            if (minecraft.currentScreen == null) {
-                minecraft.displayGuiScreen(clickGuiScreen);
-            } else if (minecraft.currentScreen == clickGuiScreen) {
-                minecraft.displayGuiScreen(null);
-            }
-        }
-
         packetDelayManager.onClientTick();
         moduleManager.onClientTick();
+    }
+
+    public void toggleClickGui() {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.currentScreen == null) {
+            minecraft.displayGuiScreen(clickGuiScreen);
+        } else if (minecraft.currentScreen == clickGuiScreen) {
+            minecraft.displayGuiScreen(null);
+        }
     }
 
     @SubscribeEvent

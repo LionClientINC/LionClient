@@ -52,7 +52,7 @@ public final class RightClickerModule extends Module {
 
         normalizeRanges();
         if (minecraft.currentScreen != null || !minecraft.inGameHasFocus) {
-            resetPhysicalState();
+            stopAutoClicking();
             return;
         }
 
@@ -63,7 +63,7 @@ public final class RightClickerModule extends Module {
         }
 
         if (onlyBlocks.isEnabled() && !isHoldingBlock(minecraft)) {
-            resetPhysicalState();
+            stopAutoClicking();
             return;
         }
 
@@ -135,9 +135,20 @@ public final class RightClickerModule extends Module {
         resetPhysicalState();
     }
 
+    private void stopAutoClicking() {
+        rightDown = false;
+        syncUseItemKeyWithPhysicalMouse();
+    }
+
     private void resetPhysicalState() {
         rightDown = false;
         sendClick(false);
+    }
+
+    private void syncUseItemKeyWithPhysicalMouse() {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        int key = minecraft.gameSettings.keyBindUseItem.getKeyCode();
+        KeyBinding.setKeyBindState(key, Mouse.isButtonDown(1));
     }
 
     private void normalizeRanges() {

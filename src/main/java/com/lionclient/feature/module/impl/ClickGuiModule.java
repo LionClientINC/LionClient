@@ -1,5 +1,6 @@
 package com.lionclient.feature.module.impl;
 
+import com.lionclient.LionClient;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.NumberSetting;
@@ -13,7 +14,7 @@ public final class ClickGuiModule extends Module {
     private final NumberSetting blue = new NumberSetting("Blue", 0, 255, 5, 0);
 
     public ClickGuiModule() {
-        super("ClickGUI", "Customize the ClickGUI accent color.", Category.CLIENT, Keyboard.KEY_NONE);
+        super("ClickGUI", "Customize the ClickGUI accent color.", Category.CLIENT, Keyboard.KEY_RSHIFT);
         instance = this;
         addSetting(red);
         addSetting(green);
@@ -22,6 +23,15 @@ public final class ClickGuiModule extends Module {
 
     @Override
     public void toggle() {
+        LionClient client = LionClient.getInstance();
+        if (client != null) {
+            client.toggleClickGui();
+        }
+    }
+
+    @Override
+    public boolean canBeUnbound() {
+        return false;
     }
 
     public static int getAccentColor() {

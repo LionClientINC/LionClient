@@ -33,7 +33,7 @@ public final class FakeLagModule extends Module {
     private float lastHealth = -1.0F;
 
     public FakeLagModule() {
-        super("FakeLag", "Delays outbound packets to simulate lag.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("FakeLag [INVDEV]", "Delays outbound packets to simulate lag.", Category.COMBAT, Keyboard.KEY_NONE);
         addSetting(range);
         addSetting(minDelay);
         addSetting(maxDelay);

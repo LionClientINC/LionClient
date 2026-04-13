@@ -18,6 +18,11 @@ public final class ClickRecorderModule extends Module {
     }
 
     @Override
+    public boolean showsKeybindSetting() {
+        return false;
+    }
+
+    @Override
     protected void onEnable() {
         ClickPatternStore.clear();
         lastClickAt = 0L;

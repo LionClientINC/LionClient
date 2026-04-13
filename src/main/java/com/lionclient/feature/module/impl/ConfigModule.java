@@ -20,6 +20,11 @@ public final class ConfigModule extends Module {
     public void toggle() {
     }
 
+    @Override
+    public boolean showsKeybindSetting() {
+        return false;
+    }
+
     public void rebuildSettings() {
         clearSettings();
         addSetting(new ActionSetting("New Config", new Runnable() {

@@ -147,11 +147,13 @@ public final class ClickGuiScreen extends GuiScreen {
                         rowY += ROW_HEIGHT;
                     }
 
-                    Gui.drawRect(x + 4, rowY, x + WIDTH - 4, rowY + ROW_HEIGHT, 0x9040485C);
-                    fontRenderer.drawString(KEYBIND_LABEL, x + 6, rowY + 3, 0xFFE8EAF1);
-                    String keybindText = bindingModule == module ? "Press key..." : getKeybindText(module);
-                    fontRenderer.drawString(keybindText, x + WIDTH - 6 - fontRenderer.getStringWidth(keybindText), rowY + 3, 0xFF000000 | accent);
-                    rowY += ROW_HEIGHT;
+                    if (module.showsKeybindSetting()) {
+                        Gui.drawRect(x + 4, rowY, x + WIDTH - 4, rowY + ROW_HEIGHT, 0x9040485C);
+                        fontRenderer.drawString(KEYBIND_LABEL, x + 6, rowY + 3, 0xFFE8EAF1);
+                        String keybindText = bindingModule == module ? "Press key..." : getKeybindText(module);
+                        fontRenderer.drawString(keybindText, x + WIDTH - 6 - fontRenderer.getStringWidth(keybindText), rowY + 3, 0xFF000000 | accent);
+                        rowY += ROW_HEIGHT;
+                    }
                 }
             }
 
@@ -195,11 +197,13 @@ public final class ClickGuiScreen extends GuiScreen {
                         rowY += ROW_HEIGHT;
                     }
 
-                    if (isHovered(mouseX, mouseY, x + 4, rowY, WIDTH - 8, ROW_HEIGHT)) {
+                    if (module.showsKeybindSetting() && isHovered(mouseX, mouseY, x + 4, rowY, WIDTH - 8, ROW_HEIGHT)) {
                         handleKeybindClick(module, mouseButton);
                         return;
                     }
-                    rowY += ROW_HEIGHT;
+                    if (module.showsKeybindSetting()) {
+                        rowY += ROW_HEIGHT;
+                    }
                 }
             }
         }
@@ -215,7 +219,10 @@ public final class ClickGuiScreen extends GuiScreen {
         private int getContentHeight() {
             int rows = modules.size();
             if (expandedModule != null) {
-                rows += expandedModule.getSettings().size() + 1;
+                rows += expandedModule.getSettings().size();
+                if (expandedModule.showsKeybindSetting()) {
+                    rows++;
+                }
             }
             return HEADER_HEIGHT + (rows * ROW_HEIGHT);
         }
@@ -289,7 +296,7 @@ public final class ClickGuiScreen extends GuiScreen {
                 return;
             }
 
-            if (mouseButton == 1) {
+            if (mouseButton == 1 && module.canBeUnbound()) {
                 module.setKeyCode(Keyboard.KEY_NONE);
                 bindingModule = null;
             }
@@ -301,7 +308,9 @@ public final class ClickGuiScreen extends GuiScreen {
             }
 
             if (keyCode == Keyboard.KEY_ESCAPE || keyCode == Keyboard.KEY_BACK || keyCode == Keyboard.KEY_DELETE) {
-                bindingModule.setKeyCode(Keyboard.KEY_NONE);
+                if (bindingModule.canBeUnbound()) {
+                    bindingModule.setKeyCode(Keyboard.KEY_NONE);
+                }
             } else {
                 bindingModule.setKeyCode(keyCode);
             }

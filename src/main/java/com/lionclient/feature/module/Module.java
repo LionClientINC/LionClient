@@ -55,8 +55,19 @@ public abstract class Module {
     }
 
     public void setKeyCode(int keyCode) {
+        if (keyCode == org.lwjgl.input.Keyboard.KEY_NONE && !canBeUnbound()) {
+            return;
+        }
         this.keyCode = keyCode;
         ConfigManager.saveActiveConfig();
+    }
+
+    public boolean canBeUnbound() {
+        return true;
+    }
+
+    public boolean showsKeybindSetting() {
+        return true;
     }
 
     public boolean isEnabled() {
