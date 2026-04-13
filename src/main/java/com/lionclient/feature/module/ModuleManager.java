@@ -2,6 +2,7 @@ package com.lionclient.feature.module;
 
 import com.lionclient.config.ConfigManager;
 import com.lionclient.feature.module.impl.AutoClickerModule;
+import com.lionclient.feature.module.impl.BedPlatesModule;
 import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
 import com.lionclient.feature.module.impl.ClutchModule;
@@ -37,6 +38,7 @@ public final class ModuleManager {
 
         register(new SprintModule());
         register(new ClutchModule());
+        register(new BedPlatesModule());
         register(new LegitScaffoldModule());
         register(new AutoClickerModule());
         register(new RightClickerModule());
