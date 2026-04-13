@@ -22,7 +22,7 @@ public final class ReachModule extends Module {
     private final NumberSetting chance = new NumberSetting("Chance", 0, 100, 1, 100);
 
     public ReachModule() {
-        super("Reach", "Extends attack range.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("Reach", "Extends attack range. Patched on any decent anticheat.", Category.COMBAT, Keyboard.KEY_NONE);
         addSetting(reach);
         addSetting(chance);
     }

@@ -38,6 +38,10 @@ public final class ClickGuiScreen extends GuiScreen {
             panel.draw(mouseX, mouseY, fontRendererObj, this.width);
         }
 
+        for (CategoryPanel panel : panels) {
+            panel.drawDescriptionOverlay(fontRendererObj, this.width);
+        }
+
         super.drawScreen(mouseX, mouseY, partialTicks);
     }
 
@@ -100,6 +104,7 @@ public final class ClickGuiScreen extends GuiScreen {
         private Module bindingModule;
         private Module hoveredModule;
         private long hoveredSince;
+        private int hoveredRowY;
         private int x;
         private int y;
         private boolean dragging;
@@ -126,7 +131,7 @@ public final class ClickGuiScreen extends GuiScreen {
 
             int rowY = y + HEADER_HEIGHT;
             Module currentlyHoveredModule = null;
-            int hoveredRowY = 0;
+            int currentHoveredRowY = 0;
             for (Module module : modules) {
                 int color = module.isEnabled() ? (0xFF000000 | accent) : 0xFF8A8F9E;
                 Gui.drawRect(x + 2, rowY + 1, x + WIDTH - 2, rowY + ROW_HEIGHT - 1, 0x80262B3E);
@@ -135,7 +140,7 @@ public final class ClickGuiScreen extends GuiScreen {
 
                 if (isHovered(mouseX, mouseY, x, rowY, WIDTH, ROW_HEIGHT)) {
                     currentlyHoveredModule = module;
-                    hoveredRowY = rowY;
+                    currentHoveredRowY = rowY;
                 }
                 rowY += ROW_HEIGHT;
 
@@ -158,8 +163,12 @@ public final class ClickGuiScreen extends GuiScreen {
             }
 
             updateHoveredModule(currentlyHoveredModule);
-            if (shouldShowDescription(currentlyHoveredModule)) {
-                drawModuleDescription(currentlyHoveredModule, hoveredRowY, fontRenderer, screenWidth);
+            hoveredRowY = currentHoveredRowY;
+        }
+
+        private void drawDescriptionOverlay(net.minecraft.client.gui.FontRenderer fontRenderer, int screenWidth) {
+            if (shouldShowDescription(hoveredModule)) {
+                drawModuleDescription(hoveredModule, hoveredRowY, fontRenderer, screenWidth);
             }
         }
 
