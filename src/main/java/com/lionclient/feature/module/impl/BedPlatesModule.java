@@ -4,10 +4,13 @@ import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.BooleanSetting;
 import com.lionclient.feature.setting.NumberSetting;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -19,6 +22,7 @@ import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.gui.FontRenderer;
+import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
@@ -26,14 +30,29 @@ import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.MathHelper;
+import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
 public final class BedPlatesModule extends Module {
+    private static final int FALLBACK_RESCAN_INTERVAL_TICKS = 240;
+    private static final int FALLBACK_RESCAN_CHUNKS_PER_TICK = 1;
+
     private final NumberSetting range = new NumberSetting("Range", 5, 64, 1, 24);
     private final NumberSetting layers = new NumberSetting("Layers", 1, 4, 1, 2);
     private final BooleanSetting showDistance = new BooleanSetting("Show Distance", true);
+
+    private final Map<String, CachedBed> bedCache = new HashMap<String, CachedBed>();
+    private final Map<Long, Set<String>> chunkBeds = new HashMap<Long, Set<String>>();
+    private final Set<Long> scannedChunks = new HashSet<Long>();
+    private final Deque<Long> rescanQueue = new ArrayDeque<Long>();
+    private final Set<Long> queuedChunks = new HashSet<Long>();
+
+    private WorldClient cachedWorld;
+    private int ticksSinceFallback;
+    private int lastRange = range.getValue();
+    private int lastLayers = layers.getValue();
 
     public BedPlatesModule() {
         super("BedPlates", "Shows the unique defense blocks around nearby beds.", Category.RENDER, Keyboard.KEY_NONE);
@@ -43,70 +62,215 @@ public final class BedPlatesModule extends Module {
     }
 
     @Override
-    public void onRenderWorld(RenderWorldLastEvent event) {
+    protected void onEnable() {
+        resetCache();
+    }
+
+    @Override
+    protected void onDisable() {
+        resetCache();
+    }
+
+    @Override
+    public void onClientTick() {
         Minecraft mc = Minecraft.getMinecraft();
         EntityPlayerSP player = mc.thePlayer;
-        if (player == null || mc.theWorld == null) {
+        WorldClient world = mc.theWorld;
+        if (player == null || world == null) {
+            resetCache();
             return;
         }
 
-        List<BedDefenseInfo> beds = findBeds(mc, player);
+        if (cachedWorld != world) {
+            resetCache();
+            cachedWorld = world;
+        }
+
+        if (lastRange != range.getValue() || lastLayers != layers.getValue()) {
+            lastRange = range.getValue();
+            lastLayers = layers.getValue();
+            resetChunkTracking();
+            queueNearbyChunks(player, true);
+        }
+
+        boolean bedBroken = removeBrokenBeds(world);
+        if (bedBroken) {
+            queueNearbyChunks(player, true);
+        }
+
+        scanNewNearbyChunks(world, player);
+
+        ticksSinceFallback++;
+        if (ticksSinceFallback >= FALLBACK_RESCAN_INTERVAL_TICKS) {
+            ticksSinceFallback = 0;
+            queueNearbyChunks(player, true);
+        }
+
+        processQueuedRescans(world);
+    }
+
+    @Override
+    public void onRenderWorld(RenderWorldLastEvent event) {
+        Minecraft mc = Minecraft.getMinecraft();
+        EntityPlayerSP player = mc.thePlayer;
+        if (player == null || mc.theWorld == null || bedCache.isEmpty()) {
+            return;
+        }
+
+        List<BedRenderInfo> beds = new ArrayList<BedRenderInfo>();
+        double maxDistanceSq = range.getValue() * range.getValue();
+        for (CachedBed cachedBed : bedCache.values()) {
+            double distanceSq = getDistanceSq(player, cachedBed.first, cachedBed.second);
+            if (distanceSq <= maxDistanceSq) {
+                beds.add(new BedRenderInfo(cachedBed.first, cachedBed.second, cachedBed.defenses, distanceSq));
+            }
+        }
+
         if (beds.isEmpty()) {
             return;
         }
 
-        Collections.sort(beds, new Comparator<BedDefenseInfo>() {
+        Collections.sort(beds, new Comparator<BedRenderInfo>() {
             @Override
-            public int compare(BedDefenseInfo left, BedDefenseInfo right) {
+            public int compare(BedRenderInfo left, BedRenderInfo right) {
                 return Double.compare(left.distanceSq, right.distanceSq);
             }
         });
 
-        for (BedDefenseInfo bed : beds) {
-            renderLabel(mc, bed, event.partialTicks);
+        for (BedRenderInfo bed : beds) {
+            renderLabel(mc, bed);
         }
     }
 
-    private List<BedDefenseInfo> findBeds(Minecraft mc, EntityPlayerSP player) {
-        int radius = range.getValue();
-        int centerX = MathHelper.floor_double(player.posX);
-        int centerY = MathHelper.floor_double(player.posY);
-        int centerZ = MathHelper.floor_double(player.posZ);
-        int minY = Math.max(0, centerY - radius);
-        int maxY = Math.min(255, centerY + radius);
-        double maxDistanceSq = radius * radius;
+    private void scanNewNearbyChunks(WorldClient world, EntityPlayerSP player) {
+        int chunkRadius = getChunkRadius();
+        int playerChunkX = MathHelper.floor_double(player.posX) >> 4;
+        int playerChunkZ = MathHelper.floor_double(player.posZ) >> 4;
 
-        Map<String, BedDefenseInfo> beds = new HashMap<String, BedDefenseInfo>();
-        for (int x = centerX - radius; x <= centerX + radius; x++) {
-            for (int z = centerZ - radius; z <= centerZ + radius; z++) {
-                for (int y = minY; y <= maxY; y++) {
-                    BlockPos pos = new BlockPos(x, y, z);
-                    Block block = mc.theWorld.getBlockState(pos).getBlock();
+        for (int chunkX = playerChunkX - chunkRadius; chunkX <= playerChunkX + chunkRadius; chunkX++) {
+            for (int chunkZ = playerChunkZ - chunkRadius; chunkZ <= playerChunkZ + chunkRadius; chunkZ++) {
+                long chunkKey = makeChunkKey(chunkX, chunkZ);
+                if (scannedChunks.contains(chunkKey) || !isChunkLoaded(world, chunkX, chunkZ)) {
+                    continue;
+                }
+                scanChunk(world, chunkX, chunkZ);
+            }
+        }
+    }
+
+    private boolean removeBrokenBeds(WorldClient world) {
+        boolean removed = false;
+        List<String> staleKeys = new ArrayList<String>();
+        for (Map.Entry<String, CachedBed> entry : bedCache.entrySet()) {
+            CachedBed bed = entry.getValue();
+            if (!isBedBlock(world, bed.first) || !isBedBlock(world, bed.second)) {
+                staleKeys.add(entry.getKey());
+            }
+        }
+
+        for (String staleKey : staleKeys) {
+            CachedBed removedBed = bedCache.remove(staleKey);
+            if (removedBed == null) {
+                continue;
+            }
+            long ownerChunkKey = getOwnerChunkKey(removedBed.first);
+            Set<String> keys = chunkBeds.get(ownerChunkKey);
+            if (keys != null) {
+                keys.remove(staleKey);
+                if (keys.isEmpty()) {
+                    chunkBeds.remove(ownerChunkKey);
+                }
+            }
+            removed = true;
+        }
+        return removed;
+    }
+
+    private void queueNearbyChunks(EntityPlayerSP player, boolean resetScannedState) {
+        int chunkRadius = getChunkRadius();
+        int playerChunkX = MathHelper.floor_double(player.posX) >> 4;
+        int playerChunkZ = MathHelper.floor_double(player.posZ) >> 4;
+
+        for (int chunkX = playerChunkX - chunkRadius; chunkX <= playerChunkX + chunkRadius; chunkX++) {
+            for (int chunkZ = playerChunkZ - chunkRadius; chunkZ <= playerChunkZ + chunkRadius; chunkZ++) {
+                long chunkKey = makeChunkKey(chunkX, chunkZ);
+                if (resetScannedState) {
+                    scannedChunks.remove(chunkKey);
+                }
+                if (queuedChunks.add(chunkKey)) {
+                    rescanQueue.addLast(chunkKey);
+                }
+            }
+        }
+    }
+
+    private void processQueuedRescans(WorldClient world) {
+        int processed = 0;
+        while (!rescanQueue.isEmpty() && processed < FALLBACK_RESCAN_CHUNKS_PER_TICK) {
+            long chunkKey = rescanQueue.removeFirst();
+            queuedChunks.remove(chunkKey);
+            int chunkX = unpackChunkX(chunkKey);
+            int chunkZ = unpackChunkZ(chunkKey);
+            if (isChunkLoaded(world, chunkX, chunkZ)) {
+                scanChunk(world, chunkX, chunkZ);
+            } else {
+                scannedChunks.remove(chunkKey);
+                chunkBeds.remove(chunkKey);
+            }
+            processed++;
+        }
+    }
+
+    private void scanChunk(WorldClient world, int chunkX, int chunkZ) {
+        if (!isChunkLoaded(world, chunkX, chunkZ)) {
+            return;
+        }
+
+        Chunk chunk = world.getChunkFromChunkCoords(chunkX, chunkZ);
+        long chunkKey = makeChunkKey(chunkX, chunkZ);
+        Set<String> foundBeds = new HashSet<String>();
+        int startX = chunkX << 4;
+        int startZ = chunkZ << 4;
+
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                for (int y = 0; y < 256; y++) {
+                    BlockPos pos = new BlockPos(startX + localX, y, startZ + localZ);
+                    Block block = chunk.getBlock(pos);
                     if (!(block instanceof BlockBed)) {
                         continue;
                     }
 
-                    double distanceSq = player.getDistanceSq(pos);
-                    if (distanceSq > maxDistanceSq) {
+                    BedPair pair = resolveBedPair(world, pos);
+                    if (getOwnerChunkKey(pair.first) != chunkKey) {
                         continue;
                     }
 
-                    BedPair pair = resolveBedPair(mc, pos, (BlockBed) block);
-                    String key = makeBedKey(pair.first, pair.second);
-                    if (beds.containsKey(key)) {
+                    String bedKey = makeBedKey(pair.first, pair.second);
+                    if (!foundBeds.add(bedKey)) {
                         continue;
                     }
 
-                    Set<String> defenses = collectDefenseBlocks(mc, pair.first, pair.second);
-                    beds.put(key, new BedDefenseInfo(pair.first, pair.second, defenses, distanceSq));
+                    bedCache.put(bedKey, new CachedBed(pair.first, pair.second, collectDefenseBlocks(world, pair.first, pair.second)));
                 }
             }
         }
 
-        return new ArrayList<BedDefenseInfo>(beds.values());
+        Set<String> previousBeds = chunkBeds.put(chunkKey, foundBeds);
+        if (previousBeds != null) {
+            for (String previousKey : previousBeds) {
+                if (!foundBeds.contains(previousKey)) {
+                    bedCache.remove(previousKey);
+                }
+            }
+        }
+        if (foundBeds.isEmpty()) {
+            chunkBeds.remove(chunkKey);
+        }
+        scannedChunks.add(chunkKey);
     }
 
-    private BedPair resolveBedPair(Minecraft mc, BlockPos pos, BlockBed bed) {
+    private BedPair resolveBedPair(WorldClient world, BlockPos pos) {
         BlockPos otherPart = pos;
         BlockPos[] neighbors = new BlockPos[] {
             pos.north(),
@@ -115,7 +279,7 @@ public final class BedPlatesModule extends Module {
             pos.west()
         };
         for (BlockPos neighbor : neighbors) {
-            if (mc.theWorld.getBlockState(neighbor).getBlock() instanceof BlockBed) {
+            if (isBedBlock(world, neighbor)) {
                 otherPart = neighbor;
                 break;
             }
@@ -126,15 +290,15 @@ public final class BedPlatesModule extends Module {
         return new BedPair(first, second);
     }
 
-    private Set<String> collectDefenseBlocks(Minecraft mc, BlockPos first, BlockPos second) {
+    private Set<String> collectDefenseBlocks(WorldClient world, BlockPos first, BlockPos second) {
         Set<String> names = new LinkedHashSet<String>();
         int radius = layers.getValue();
 
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dy = 0; dy <= radius; dy++) {
                 for (int dz = -radius; dz <= radius; dz++) {
-                    addDefenseBlock(mc, names, first.add(dx, dy, dz));
-                    addDefenseBlock(mc, names, second.add(dx, dy, dz));
+                    addDefenseBlock(world, names, first.add(dx, dy, dz));
+                    addDefenseBlock(world, names, second.add(dx, dy, dz));
                 }
             }
         }
@@ -142,12 +306,34 @@ public final class BedPlatesModule extends Module {
         return names;
     }
 
-    private void addDefenseBlock(Minecraft mc, Set<String> names, BlockPos pos) {
-        Block block = mc.theWorld.getBlockState(pos).getBlock();
+    private void addDefenseBlock(WorldClient world, Set<String> names, BlockPos pos) {
+        Block block = world.getBlockState(pos).getBlock();
         if (block == null || block == Blocks.air || block instanceof BlockBed || block.getMaterial() == Material.air) {
             return;
         }
         names.add(cleanBlockName(block));
+    }
+
+    private boolean isBedBlock(WorldClient world, BlockPos pos) {
+        return world.getBlockState(pos).getBlock() instanceof BlockBed;
+    }
+
+    private boolean isChunkLoaded(WorldClient world, int chunkX, int chunkZ) {
+        return world.getChunkProvider().chunkExists(chunkX, chunkZ);
+    }
+
+    private int getChunkRadius() {
+        return Math.max(1, (range.getValue() + 15) >> 4);
+    }
+
+    private double getDistanceSq(EntityPlayerSP player, BlockPos first, BlockPos second) {
+        double centerX = (first.getX() + second.getX()) / 2.0D + 0.5D;
+        double centerY = Math.max(first.getY(), second.getY()) + 0.5D;
+        double centerZ = (first.getZ() + second.getZ()) / 2.0D + 0.5D;
+        double deltaX = player.posX - centerX;
+        double deltaY = player.posY - centerY;
+        double deltaZ = player.posZ - centerZ;
+        return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
     }
 
     private String cleanBlockName(Block block) {
@@ -166,7 +352,7 @@ public final class BedPlatesModule extends Module {
         return simple.replace('_', ' ');
     }
 
-    private void renderLabel(Minecraft mc, BedDefenseInfo bed, float partialTicks) {
+    private void renderLabel(Minecraft mc, BedRenderInfo bed) {
         FontRenderer font = mc.fontRendererObj;
         double viewerX = mc.getRenderManager().viewerPosX;
         double viewerY = mc.getRenderManager().viewerPosY;
@@ -232,6 +418,36 @@ public final class BedPlatesModule extends Module {
         return builder.toString();
     }
 
+    private void resetCache() {
+        cachedWorld = null;
+        ticksSinceFallback = 0;
+        bedCache.clear();
+        resetChunkTracking();
+    }
+
+    private void resetChunkTracking() {
+        chunkBeds.clear();
+        scannedChunks.clear();
+        rescanQueue.clear();
+        queuedChunks.clear();
+    }
+
+    private long getOwnerChunkKey(BlockPos pos) {
+        return makeChunkKey(pos.getX() >> 4, pos.getZ() >> 4);
+    }
+
+    private long makeChunkKey(int chunkX, int chunkZ) {
+        return ((long) chunkX << 32) ^ (chunkZ & 0xFFFFFFFFL);
+    }
+
+    private int unpackChunkX(long chunkKey) {
+        return (int) (chunkKey >> 32);
+    }
+
+    private int unpackChunkZ(long chunkKey) {
+        return (int) chunkKey;
+    }
+
     private String makeBedKey(BlockPos first, BlockPos second) {
         return first.getX() + ":" + first.getY() + ":" + first.getZ() + "|" + second.getX() + ":" + second.getY() + ":" + second.getZ();
     }
@@ -256,13 +472,25 @@ public final class BedPlatesModule extends Module {
         }
     }
 
-    private static final class BedDefenseInfo {
+    private static final class CachedBed {
+        private final BlockPos first;
+        private final BlockPos second;
+        private final Set<String> defenses;
+
+        private CachedBed(BlockPos first, BlockPos second, Set<String> defenses) {
+            this.first = first;
+            this.second = second;
+            this.defenses = defenses;
+        }
+    }
+
+    private static final class BedRenderInfo {
         private final BlockPos first;
         private final BlockPos second;
         private final Set<String> defenses;
         private final double distanceSq;
 
-        private BedDefenseInfo(BlockPos first, BlockPos second, Set<String> defenses, double distanceSq) {
+        private BedRenderInfo(BlockPos first, BlockPos second, Set<String> defenses, double distanceSq) {
             this.first = first;
             this.second = second;
             this.defenses = defenses;
