@@ -10,9 +10,10 @@ import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.MathHelper;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraft.world.World;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
@@ -76,20 +77,61 @@ public final class LegitScaffoldModule extends Module {
             return false;
         }
 
+        World world = Minecraft.getMinecraft().theWorld;
+        double[] movement = getMovementOffset(player);
+        AxisAlignedBB box = player.getEntityBoundingBox();
+        AxisAlignedBB projectedBox = box.offset(movement[0], 0.0D, movement[1]);
+        double sampleY = projectedBox.minY - 0.08D;
+        double[] lateral = getLateralOffset(movement);
+        double leadX = player.posX + movement[0];
+        double leadZ = player.posZ + movement[1];
+        double sideReach = Math.max(0.20D, (projectedBox.maxX - projectedBox.minX) * 0.48D);
+        double sideX = lateral[0] * sideReach;
+        double sideZ = lateral[1] * sideReach;
+
+        boolean centerSupported = hasSupport(world, leadX, sampleY, leadZ);
+        boolean leftSupported = hasSupport(world, leadX + sideX, sampleY, leadZ + sideZ);
+        boolean rightSupported = hasSupport(world, leadX - sideX, sampleY, leadZ - sideZ);
+
+        return !centerSupported || (!leftSupported && !rightSupported);
+    }
+
+    private double[] getMovementOffset(EntityPlayerSP player) {
+        float forward = player.movementInput.moveForward;
+        float strafe = player.movementInput.moveStrafe;
+        float magnitude = MathHelper.sqrt_float(forward * forward + strafe * strafe);
+        if (magnitude < 0.001F) {
+            return new double[] {0.0D, 0.0D};
+        }
+
+        forward /= magnitude;
+        strafe /= magnitude;
+
         double yawRadians = Math.toRadians(player.rotationYaw);
-        double backwardX = Math.sin(yawRadians) * 0.38D;
-        double backwardZ = -Math.cos(yawRadians) * 0.38D;
+        double sin = Math.sin(yawRadians);
+        double cos = Math.cos(yawRadians);
+        double motionX = strafe * cos - forward * sin;
+        double motionZ = forward * cos + strafe * sin;
+        double horizontalMotion = Math.sqrt(player.motionX * player.motionX + player.motionZ * player.motionZ);
+        double projection = Math.max(0.24D, Math.min(0.34D, horizontalMotion + 0.08D));
+        return new double[] {motionX * projection, motionZ * projection};
+    }
 
-        double sampleX = player.posX + backwardX;
-        double sampleY = player.getEntityBoundingBox().minY - 0.08D;
-        double sampleZ = player.posZ + backwardZ;
+    private double[] getLateralOffset(double[] movement) {
+        double length = Math.sqrt(movement[0] * movement[0] + movement[1] * movement[1]);
+        if (length < 1.0E-4D) {
+            return new double[] {1.0D, 0.0D};
+        }
+        return new double[] {-movement[1] / length, movement[0] / length};
+    }
 
+    private boolean hasSupport(World world, double x, double y, double z) {
         BlockPos samplePos = new BlockPos(
-            MathHelper.floor_double(sampleX),
-            MathHelper.floor_double(sampleY),
-            MathHelper.floor_double(sampleZ)
+            MathHelper.floor_double(x),
+            MathHelper.floor_double(y),
+            MathHelper.floor_double(z)
         );
-        return Minecraft.getMinecraft().theWorld.getBlockState(samplePos).getBlock().getMaterial() == Material.air;
+        return world.getBlockState(samplePos).getBlock().getMaterial() != Material.air;
     }
 
     private boolean shouldExtendSneakDelay(Minecraft minecraft) {
