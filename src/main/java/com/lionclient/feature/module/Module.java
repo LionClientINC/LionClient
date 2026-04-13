@@ -9,6 +9,7 @@ import net.minecraft.network.Packet;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public abstract class Module {
@@ -101,7 +102,13 @@ public abstract class Module {
     public void onClientTick() {
     }
 
+    public void onPlayerTick(TickEvent.PlayerTickEvent event) {
+    }
+
     public void onMouseEvent(MouseEvent event) {
+    }
+
+    public void onPlayerJump(LivingEvent.LivingJumpEvent event) {
     }
 
     public void onRenderTick(TickEvent.RenderTickEvent event) {

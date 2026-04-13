@@ -9,6 +9,7 @@ import com.lionclient.feature.module.impl.ClutchModule;
 import com.lionclient.feature.module.impl.ConfigModule;
 import com.lionclient.feature.module.impl.FakeLagModule;
 import com.lionclient.feature.module.impl.HudModule;
+import com.lionclient.feature.module.impl.KillAuraModule;
 import com.lionclient.feature.module.impl.LegitScaffoldModule;
 import com.lionclient.feature.module.impl.PlayerEspModule;
 import com.lionclient.feature.module.impl.ReachModule;
@@ -23,6 +24,7 @@ import net.minecraft.network.Packet;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public final class ModuleManager {
@@ -43,6 +45,7 @@ public final class ModuleManager {
         register(new AutoClickerModule());
         register(new RightClickerModule());
         register(new ReachModule());
+        register(new KillAuraModule());
         register(new FakeLagModule());
         register(new ClickRecorderModule());
         register(new ClickGuiModule());
@@ -75,10 +78,26 @@ public final class ModuleManager {
         }
     }
 
+    public void onPlayerTick(TickEvent.PlayerTickEvent event) {
+        for (Module module : modules) {
+            if (module.isEnabled()) {
+                module.onPlayerTick(event);
+            }
+        }
+    }
+
     public void onMouseEvent(MouseEvent event) {
         for (Module module : modules) {
             if (module.isEnabled()) {
                 module.onMouseEvent(event);
+            }
+        }
+    }
+
+    public void onPlayerJump(LivingEvent.LivingJumpEvent event) {
+        for (Module module : modules) {
+            if (module.isEnabled()) {
+                module.onPlayerJump(event);
             }
         }
     }

@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -61,6 +62,11 @@ public final class LionClient {
         moduleManager.onClientTick();
     }
 
+    @SubscribeEvent
+    public void onPlayerTick(TickEvent.PlayerTickEvent event) {
+        moduleManager.onPlayerTick(event);
+    }
+
     public void toggleClickGui() {
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft.currentScreen == null) {
@@ -73,6 +79,11 @@ public final class LionClient {
     @SubscribeEvent
     public void onMouseInput(MouseEvent event) {
         moduleManager.onMouseEvent(event);
+    }
+
+    @SubscribeEvent
+    public void onPlayerJump(LivingEvent.LivingJumpEvent event) {
+        moduleManager.onPlayerJump(event);
     }
 
     @SubscribeEvent
