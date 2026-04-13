@@ -33,6 +33,7 @@ import org.lwjgl.opengl.GL11;
 public final class KillAuraModule extends Module {
     private final Random random = new Random();
 
+    private final DecimalSetting lookRange = new DecimalSetting("Look Range", 3.0D, 10.0D, 0.1D, 6.0D);
     private final DecimalSetting reach = new DecimalSetting("Reach", 3.0D, 6.0D, 0.1D, 3.3D);
     private final NumberSetting minCps = new NumberSetting("Min CPS", 1, 25, 1, 9);
     private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 13);
@@ -66,6 +67,7 @@ public final class KillAuraModule extends Module {
 
     public KillAuraModule() {
         super("KillAura", "Attacks nearby players with Raven-style rotations and timings.", Category.COMBAT, Keyboard.KEY_NONE);
+        addSetting(lookRange);
         addSetting(reach);
         addSetting(minCps);
         addSetting(maxCps);
@@ -244,7 +246,7 @@ public final class KillAuraModule extends Module {
     private EntityPlayer findTarget(Minecraft minecraft) {
         EntityPlayer self = minecraft.thePlayer;
         EntityPlayer bestTarget = null;
-        double bestDistance = Math.max(3.0D, reach.getValue());
+        double bestDistance = Math.max(3.0D, lookRange.getValue());
         float bestFov = 180.0F;
         List<EntityPlayer> candidates = new ArrayList<EntityPlayer>();
 
@@ -289,7 +291,7 @@ public final class KillAuraModule extends Module {
 
     private boolean canTrackTarget(Minecraft minecraft, EntityPlayer player) {
         return isValidTarget(minecraft.thePlayer, player)
-            && minecraft.thePlayer.getDistanceToEntity(player) <= Math.max(3.0D, reach.getValue())
+            && minecraft.thePlayer.getDistanceToEntity(player) <= Math.max(3.0D, lookRange.getValue())
             && minecraft.thePlayer.canEntityBeSeen(player);
     }
 
