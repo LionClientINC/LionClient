@@ -4,6 +4,7 @@ import com.lionclient.config.ConfigManager;
 import com.lionclient.feature.module.impl.AutoClickerModule;
 import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
+import com.lionclient.feature.module.impl.ClutchModule;
 import com.lionclient.feature.module.impl.ConfigModule;
 import com.lionclient.feature.module.impl.FakeLagModule;
 import com.lionclient.feature.module.impl.HudModule;
@@ -35,6 +36,7 @@ public final class ModuleManager {
         }
 
         register(new SprintModule());
+        register(new ClutchModule());
         register(new LegitScaffoldModule());
         register(new AutoClickerModule());
         register(new RightClickerModule());
