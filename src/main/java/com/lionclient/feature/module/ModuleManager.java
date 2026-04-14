@@ -15,6 +15,7 @@ import com.lionclient.feature.module.impl.PlayerEspModule;
 import com.lionclient.feature.module.impl.ReachModule;
 import com.lionclient.feature.module.impl.RightClickerModule;
 import com.lionclient.feature.module.impl.SprintModule;
+import com.lionclient.feature.module.impl.TrajectoriesModule;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -51,6 +52,7 @@ public final class ModuleManager {
         register(new ClickGuiModule());
         register(new PlayerEspModule());
         register(new HudModule());
+        register(new TrajectoriesModule());
         configManager = new ConfigManager(this);
         configModule = new ConfigModule(configManager);
         register(configModule);
