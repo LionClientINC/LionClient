@@ -7,27 +7,36 @@ import com.lionclient.feature.setting.DecimalSetting;
 import com.lionclient.feature.setting.NumberSetting;
 import java.util.List;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.server.S08PacketPlayerPosLook;
 import net.minecraft.network.play.server.S12PacketEntityVelocity;
+import net.minecraft.network.play.server.S27PacketExplosion;
 import net.minecraft.util.MovingObjectPosition;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 public final class KnockbackDelayModule extends Module {
+    private static final double MELEE_RANGE = 4.25D;
+
     private final DecimalSetting distanceToTarget = new DecimalSetting("Distance to target", 3.0D, 12.0D, 0.1D, 6.0D);
     private final NumberSetting chance = new NumberSetting("Chance", 0, 100, 1, 100);
     private final NumberSetting maximumDelay = new NumberSetting("Maximum delay", 50, 1000, 10, 200);
-    private final BooleanSetting inAir = new BooleanSetting("In Air", true);
+    private final BooleanSetting inAir = new BooleanSetting("In Air", false);
     private final BooleanSetting lookingAtPlayer = new BooleanSetting("Looking at player", false);
     private final BooleanSetting requireLeftMouse = new BooleanSetting("Require Left mouse", false);
     private final BooleanSetting weaponOnly = new BooleanSetting("Weapon Only", false);
+    private final BooleanSetting renderIndicator = new BooleanSetting("Render Delay", true);
 
     private long inboundDelayEndAt;
+    private long statusMessageUntil;
     private boolean inboundFlushRequested;
+    private int lastHurtTime;
+    private String statusMessage = "";
 
     public KnockbackDelayModule() {
         super("Knockback Delay", "Delays inbound knockback packets after velocity, Raven-style.", Category.COMBAT, Keyboard.KEY_NONE);
@@ -38,6 +47,7 @@ public final class KnockbackDelayModule extends Module {
         addSetting(lookingAtPlayer);
         addSetting(requireLeftMouse);
         addSetting(weaponOnly);
+        addSetting(renderIndicator);
     }
 
     @Override
@@ -55,12 +65,65 @@ public final class KnockbackDelayModule extends Module {
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft.thePlayer == null || minecraft.theWorld == null || minecraft.thePlayer.isDead) {
             requestInboundFlush();
+            lastHurtTime = 0;
             return;
         }
 
-        if (inboundDelayEndAt > 0L && hasConditionFailure(minecraft)) {
-            requestInboundFlush();
+        if (minecraft.thePlayer.hurtTime > lastHurtTime) {
+            tryArmFromDamage(minecraft);
         }
+        lastHurtTime = minecraft.thePlayer.hurtTime;
+
+        String conditionFailure = getConditionFailure(minecraft);
+        if (inboundDelayEndAt > 0L && conditionFailure != null) {
+            showStatus("Flushed: " + conditionFailure);
+            requestInboundFlush();
+            return;
+        }
+
+        if (getRemainingDelayMillis() > 0) {
+            suppressKnockbackMotion(minecraft);
+        }
+    }
+
+    @Override
+    public void onInboundPacket(Packet<?> packet) {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.thePlayer == null || minecraft.theWorld == null) {
+            return;
+        }
+
+        if (packet instanceof S08PacketPlayerPosLook) {
+            showStatus("Flush: position correction");
+            requestInboundFlush();
+            return;
+        }
+
+        if (!(packet instanceof S12PacketEntityVelocity) && !(packet instanceof S27PacketExplosion)) {
+            return;
+        }
+
+        if (packet instanceof S12PacketEntityVelocity) {
+            S12PacketEntityVelocity velocityPacket = (S12PacketEntityVelocity) packet;
+            if (velocityPacket.getEntityID() != minecraft.thePlayer.getEntityId()) {
+                return;
+            }
+        }
+
+        String conditionFailure = getConditionFailure(minecraft);
+        if (conditionFailure != null) {
+            showStatus("Blocked: " + conditionFailure);
+            return;
+        }
+
+        if (chance.getValue() < 100 && Math.random() * 100.0D >= chance.getValue()) {
+            showStatus("Blocked: chance");
+            return;
+        }
+
+        int delay = maximumDelay.getValue();
+        inboundDelayEndAt = System.currentTimeMillis() + delay;
+        showStatus("Delaying " + delay + "ms");
     }
 
     @Override
@@ -77,34 +140,15 @@ public final class KnockbackDelayModule extends Module {
             return 0;
         }
 
-        if (inboundDelayEndAt > now) {
-            if (hasConditionFailure(minecraft)) {
+        if (inboundDelayEndAt > now && (packet instanceof S12PacketEntityVelocity || packet instanceof S27PacketExplosion)) {
+            if (getConditionFailure(minecraft) != null) {
                 requestInboundFlush();
                 return 0;
             }
             return (int) Math.max(1L, inboundDelayEndAt - now);
         }
 
-        if (!(packet instanceof S12PacketEntityVelocity)) {
-            return 0;
-        }
-
-        S12PacketEntityVelocity velocityPacket = (S12PacketEntityVelocity) packet;
-        if (velocityPacket.getEntityID() != minecraft.thePlayer.getEntityId()) {
-            return 0;
-        }
-
-        if (hasConditionFailure(minecraft)) {
-            return 0;
-        }
-
-        if (chance.getValue() < 100 && Math.random() * 100.0D >= chance.getValue()) {
-            return 0;
-        }
-
-        int delay = maximumDelay.getValue();
-        inboundDelayEndAt = now + delay;
-        return delay;
+        return 0;
     }
 
     @Override
@@ -119,9 +163,41 @@ public final class KnockbackDelayModule extends Module {
         return requested;
     }
 
+    @Override
+    public void onRenderOverlay(RenderGameOverlayEvent.Text event) {
+        if (!renderIndicator.isEnabled()) {
+            return;
+        }
+
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.gameSettings.showDebugInfo || minecraft.fontRendererObj == null) {
+            return;
+        }
+
+        int remaining = getRemainingDelayMillis();
+        ScaledResolution resolution = event.resolution;
+        if (remaining > 0) {
+            String text = "KB Delay: " + remaining + "ms";
+            int x = (resolution.getScaledWidth() - minecraft.fontRendererObj.getStringWidth(text)) / 2;
+            int y = resolution.getScaledHeight() / 2 + 18;
+            minecraft.fontRendererObj.drawStringWithShadow(text, x, y, 0xFFFFAA00);
+        }
+
+        if (statusMessage.isEmpty() || System.currentTimeMillis() > statusMessageUntil) {
+            return;
+        }
+
+        int statusX = (resolution.getScaledWidth() - minecraft.fontRendererObj.getStringWidth(statusMessage)) / 2;
+        int statusY = resolution.getScaledHeight() / 2 + 30;
+        minecraft.fontRendererObj.drawStringWithShadow(statusMessage, statusX, statusY, 0xFFFFFFFF);
+    }
+
     private void resetState() {
         inboundDelayEndAt = 0L;
         inboundFlushRequested = false;
+        lastHurtTime = 0;
+        statusMessageUntil = 0L;
+        statusMessage = "";
     }
 
     private void requestInboundFlush() {
@@ -129,29 +205,77 @@ public final class KnockbackDelayModule extends Module {
         inboundFlushRequested = true;
     }
 
-    private boolean hasConditionFailure(Minecraft minecraft) {
-        EntityPlayer target = findClosestTarget(minecraft, distanceToTarget.getValue());
-        if (target == null) {
-            return true;
+    private int getRemainingDelayMillis() {
+        return (int) Math.max(0L, inboundDelayEndAt - System.currentTimeMillis());
+    }
+
+    private void tryArmFromDamage(Minecraft minecraft) {
+        String conditionFailure = getConditionFailure(minecraft);
+        if (conditionFailure != null) {
+            showStatus("Blocked: " + conditionFailure);
+            return;
         }
 
+        if (chance.getValue() < 100 && Math.random() * 100.0D >= chance.getValue()) {
+            showStatus("Blocked: chance");
+            return;
+        }
+
+        int delay = maximumDelay.getValue();
+        inboundDelayEndAt = System.currentTimeMillis() + delay;
+        showStatus("Delaying " + delay + "ms");
+    }
+
+    private void suppressKnockbackMotion(Minecraft minecraft) {
+        if (minecraft.thePlayer == null) {
+            return;
+        }
+
+        minecraft.thePlayer.motionX = 0.0D;
+        minecraft.thePlayer.motionZ = 0.0D;
+        if (minecraft.thePlayer.motionY > 0.0D) {
+            minecraft.thePlayer.motionY = 0.0D;
+        }
+    }
+
+    private String getConditionFailure(Minecraft minecraft) {
         if (inAir.isEnabled() && minecraft.thePlayer.onGround) {
-            return true;
+            return "not in air";
         }
 
-        if (lookingAtPlayer.isEnabled() && !isLookingAtTarget(minecraft, target, distanceToTarget.getValue())) {
-            return true;
+        EntityPlayer target = findClosestTarget(minecraft, distanceToTarget.getValue());
+        EntityPlayer meleeTarget = findClosestTarget(minecraft, MELEE_RANGE);
+        if (meleeTarget == null) {
+            return "no melee target";
+        }
+
+        if (!isValidMeleeAttacker(meleeTarget)) {
+            return "target using rod/bow";
+        }
+
+        if (lookingAtPlayer.isEnabled()) {
+            if (target == null) {
+                return "no target";
+            }
+            if (!isLookingAtTarget(minecraft, target, distanceToTarget.getValue())) {
+                return "not looking at player";
+            }
         }
 
         if (requireLeftMouse.isEnabled() && !Mouse.isButtonDown(0)) {
-            return true;
+            return "left mouse not held";
         }
 
         if (weaponOnly.isEnabled() && !isHoldingWeapon(minecraft.thePlayer.getHeldItem())) {
-            return true;
+            return "not holding weapon";
         }
 
-        return false;
+        return null;
+    }
+
+    private void showStatus(String text) {
+        statusMessage = text == null ? "" : text;
+        statusMessageUntil = System.currentTimeMillis() + 1500L;
     }
 
     private EntityPlayer findClosestTarget(Minecraft minecraft, double maxDistance) {
@@ -206,5 +330,28 @@ public final class KnockbackDelayModule extends Module {
 
         String name = heldItem.getUnlocalizedName();
         return name != null && (name.contains("sword") || name.contains("axe"));
+    }
+
+    private boolean isValidMeleeAttacker(EntityPlayer player) {
+        if (player == null) {
+            return false;
+        }
+
+        ItemStack heldItem = player.getHeldItem();
+        if (heldItem == null) {
+            return true;
+        }
+
+        String name = heldItem.getUnlocalizedName();
+        if (name == null) {
+            return true;
+        }
+
+        String lowerName = name.toLowerCase(java.util.Locale.ROOT);
+        if (lowerName.contains("bow") || lowerName.contains("rod") || lowerName.contains("fishing")) {
+            return false;
+        }
+
+        return true;
     }
 }
