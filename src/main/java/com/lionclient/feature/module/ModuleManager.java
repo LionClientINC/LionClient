@@ -10,6 +10,7 @@ import com.lionclient.feature.module.impl.ConfigModule;
 import com.lionclient.feature.module.impl.FakeLagModule;
 import com.lionclient.feature.module.impl.HudModule;
 import com.lionclient.feature.module.impl.KillAuraModule;
+import com.lionclient.feature.module.impl.KnockbackDelayModule;
 import com.lionclient.feature.module.impl.LegitScaffoldModule;
 import com.lionclient.feature.module.impl.PlayerEspModule;
 import com.lionclient.feature.module.impl.ReachModule;
@@ -48,6 +49,7 @@ public final class ModuleManager {
         register(new ReachModule());
         register(new KillAuraModule());
         register(new FakeLagModule());
+        register(new KnockbackDelayModule());
         register(new ClickRecorderModule());
         register(new ClickGuiModule());
         register(new PlayerEspModule());
@@ -156,6 +158,18 @@ public final class ModuleManager {
         }
     }
 
+    public int getInboundPacketDelay(Packet<?> packet) {
+        int delay = 0;
+        for (Module module : modules) {
+            if (!module.isEnabled()) {
+                continue;
+            }
+
+            delay = Math.max(delay, module.getInboundPacketDelay(packet));
+        }
+        return delay;
+    }
+
     public boolean isPacketDelayActive() {
         for (Module module : modules) {
             if (module.isEnabled() && module.isPacketDelayActive()) {
@@ -165,9 +179,45 @@ public final class ModuleManager {
         return false;
     }
 
+    public boolean isOutboundPacketDelayActive() {
+        for (Module module : modules) {
+            if (module.isEnabled() && module.isOutboundPacketDelayActive()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isInboundPacketDelayActive() {
+        for (Module module : modules) {
+            if (module.isEnabled() && module.isInboundPacketDelayActive()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean consumeFlushRequest() {
         for (Module module : modules) {
             if (module.consumeFlushRequest()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean consumeOutboundFlushRequest() {
+        for (Module module : modules) {
+            if (module.consumeOutboundFlushRequest()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean consumeInboundFlushRequest() {
+        for (Module module : modules) {
+            if (module.consumeInboundFlushRequest()) {
                 return true;
             }
         }

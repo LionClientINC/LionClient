@@ -22,7 +22,8 @@ public final class PacketDelayManager {
 
     private final Minecraft minecraft = Minecraft.getMinecraft();
     private final ModuleManager moduleManager;
-    private final Queue<QueuedPacket> queue = new ArrayDeque<QueuedPacket>();
+    private final Queue<QueuedPacket> outboundQueue = new ArrayDeque<QueuedPacket>();
+    private final Queue<QueuedInboundPacket> inboundQueue = new ArrayDeque<QueuedInboundPacket>();
     private final ChannelDuplexHandler handler = new PacketInterceptor();
 
     private Channel channel;
@@ -41,25 +42,38 @@ public final class PacketDelayManager {
         }
 
         if (channel != currentChannel) {
+            flushQueuedPackets();
             detachHandler();
             channel = currentChannel;
             attachHandler(currentChannel);
         }
 
-        if (moduleManager.consumeFlushRequest()) {
-            flushQueuedPackets();
-        } else if (!moduleManager.isPacketDelayActive()) {
-            flushQueuedPackets();
+        if (moduleManager.consumeOutboundFlushRequest() || moduleManager.consumeFlushRequest()) {
+            flushQueuedOutboundPackets();
+        } else if (!moduleManager.isOutboundPacketDelayActive()) {
+            flushQueuedOutboundPackets();
         }
 
-        flushReadyPackets();
+        if (moduleManager.consumeInboundFlushRequest()) {
+            flushQueuedInboundPackets();
+        } else if (!moduleManager.isInboundPacketDelayActive()) {
+            flushQueuedInboundPackets();
+        }
+
+        flushReadyOutboundPackets();
+        flushReadyInboundPackets();
     }
 
     public void flushQueuedPackets() {
+        flushQueuedOutboundPackets();
+        flushQueuedInboundPackets();
+    }
+
+    public void flushQueuedOutboundPackets() {
         List<Packet<?>> packets = new ArrayList<Packet<?>>();
-        synchronized (queue) {
-            while (!queue.isEmpty()) {
-                packets.add(queue.poll().packet);
+        synchronized (outboundQueue) {
+            while (!outboundQueue.isEmpty()) {
+                packets.add(outboundQueue.poll().packet);
             }
         }
 
@@ -77,6 +91,19 @@ public final class PacketDelayManager {
             }
         } finally {
             flushing = false;
+        }
+    }
+
+    public void flushQueuedInboundPackets() {
+        List<QueuedInboundPacket> packets = new ArrayList<QueuedInboundPacket>();
+        synchronized (inboundQueue) {
+            while (!inboundQueue.isEmpty()) {
+                packets.add(inboundQueue.poll());
+            }
+        }
+
+        for (QueuedInboundPacket packet : packets) {
+            releaseInbound(packet);
         }
     }
 
@@ -106,16 +133,16 @@ public final class PacketDelayManager {
         }
     }
 
-    private void flushReadyPackets() {
+    private void flushReadyOutboundPackets() {
         if (channel == null || !channel.isOpen()) {
             return;
         }
 
         long now = System.currentTimeMillis();
         List<Packet<?>> readyPackets = new ArrayList<Packet<?>>();
-        synchronized (queue) {
-            while (!queue.isEmpty() && queue.peek().releaseAt <= now) {
-                readyPackets.add(queue.poll().packet);
+        synchronized (outboundQueue) {
+            while (!outboundQueue.isEmpty() && outboundQueue.peek().releaseAt <= now) {
+                readyPackets.add(outboundQueue.poll().packet);
             }
         }
 
@@ -130,6 +157,37 @@ public final class PacketDelayManager {
         } finally {
             flushing = false;
         }
+    }
+
+    private void flushReadyInboundPackets() {
+        long now = System.currentTimeMillis();
+        List<QueuedInboundPacket> readyPackets = new ArrayList<QueuedInboundPacket>();
+        synchronized (inboundQueue) {
+            while (!inboundQueue.isEmpty() && inboundQueue.peek().releaseAt <= now) {
+                readyPackets.add(inboundQueue.poll());
+            }
+        }
+
+        for (QueuedInboundPacket packet : readyPackets) {
+            releaseInbound(packet);
+        }
+    }
+
+    private void releaseInbound(final QueuedInboundPacket queuedPacket) {
+        final ChannelHandlerContext context = queuedPacket.context;
+        if (context == null || context.channel() == null || !context.channel().isOpen()) {
+            return;
+        }
+
+        context.channel().eventLoop().execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    context.fireChannelRead(queuedPacket.packet);
+                } catch (Exception ignored) {
+                }
+            }
+        });
     }
 
     private Channel resolveChannel() {
@@ -164,8 +222,8 @@ public final class PacketDelayManager {
                 moduleManager.onOutboundPacket(packet);
                 int delay = moduleManager.getOutboundPacketDelay(packet);
                 if (delay > 0) {
-                    synchronized (queue) {
-                        queue.add(new QueuedPacket(packet, System.currentTimeMillis() + delay));
+                    synchronized (outboundQueue) {
+                        outboundQueue.add(new QueuedPacket(packet, System.currentTimeMillis() + delay));
                     }
                     promise.setSuccess();
                     return;
@@ -178,7 +236,15 @@ public final class PacketDelayManager {
         @Override
         public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             if (message instanceof Packet<?>) {
-                moduleManager.onInboundPacket((Packet<?>) message);
+                Packet<?> packet = (Packet<?>) message;
+                moduleManager.onInboundPacket(packet);
+                int delay = moduleManager.getInboundPacketDelay(packet);
+                if (delay > 0) {
+                    synchronized (inboundQueue) {
+                        inboundQueue.add(new QueuedInboundPacket(context, packet, System.currentTimeMillis() + delay));
+                    }
+                    return;
+                }
             }
 
             super.channelRead(context, message);
@@ -190,6 +256,18 @@ public final class PacketDelayManager {
         private final long releaseAt;
 
         private QueuedPacket(Packet<?> packet, long releaseAt) {
+            this.packet = packet;
+            this.releaseAt = releaseAt;
+        }
+    }
+
+    private static final class QueuedInboundPacket {
+        private final ChannelHandlerContext context;
+        private final Packet<?> packet;
+        private final long releaseAt;
+
+        private QueuedInboundPacket(ChannelHandlerContext context, Packet<?> packet, long releaseAt) {
+            this.context = context;
             this.packet = packet;
             this.releaseAt = releaseAt;
         }

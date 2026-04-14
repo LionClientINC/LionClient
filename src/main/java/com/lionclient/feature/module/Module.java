@@ -124,6 +124,10 @@ public abstract class Module {
         return 0;
     }
 
+    public int getInboundPacketDelay(Packet<?> packet) {
+        return 0;
+    }
+
     public void onOutboundPacket(Packet<?> packet) {
     }
 
@@ -136,5 +140,21 @@ public abstract class Module {
 
     public boolean consumeFlushRequest() {
         return false;
+    }
+
+    public boolean isOutboundPacketDelayActive() {
+        return isPacketDelayActive();
+    }
+
+    public boolean isInboundPacketDelayActive() {
+        return isPacketDelayActive();
+    }
+
+    public boolean consumeOutboundFlushRequest() {
+        return consumeFlushRequest();
+    }
+
+    public boolean consumeInboundFlushRequest() {
+        return consumeFlushRequest();
     }
 }
