@@ -1,7 +1,9 @@
 package com.lionclient;
 
 import com.lionclient.feature.module.ModuleManager;
+import com.lionclient.feature.module.impl.HudModule;
 import com.lionclient.gui.ClickGuiScreen;
+import com.lionclient.gui.HudEditorScreen;
 import com.lionclient.input.KeybindHandler;
 import com.lionclient.network.PacketDelayManager;
 import net.minecraft.client.Minecraft;
@@ -74,6 +76,15 @@ public final class LionClient {
         } else if (minecraft.currentScreen == clickGuiScreen) {
             minecraft.displayGuiScreen(null);
         }
+    }
+
+    public void openHudEditor() {
+        HudModule hudModule = HudModule.getInstance();
+        if (hudModule == null) {
+            return;
+        }
+
+        Minecraft.getMinecraft().displayGuiScreen(new HudEditorScreen(hudModule));
     }
 
     @SubscribeEvent
