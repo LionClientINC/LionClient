@@ -39,7 +39,7 @@ public final class KnockbackDelayModule extends Module {
     private String statusMessage = "";
 
     public KnockbackDelayModule() {
-        super("Knockback Delay", "Delays inbound knockback packets after velocity, Raven-style.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("Knockback Delay [INVDEV]", "Delays inbound knockback packets after velocity.", Category.COMBAT, Keyboard.KEY_NONE);
         addSetting(distanceToTarget);
         addSetting(chance);
         addSetting(maximumDelay);

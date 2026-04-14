@@ -77,7 +77,7 @@ public final class KillAuraModule extends Module {
     private boolean recordNoticeShown;
 
     public KillAuraModule() {
-        super("KillAura", "Attacks nearby players with Raven-style rotations and timings.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("KillAura[INVDEV]", "Attacks nearby players.", Category.COMBAT, Keyboard.KEY_NONE);
         minCps.setVisibility(new java.util.function.BooleanSupplier() {
             @Override
             public boolean getAsBoolean() {
@@ -85,6 +85,12 @@ public final class KillAuraModule extends Module {
             }
         });
         maxCps.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return clickMode.getValue() != ClickMode.RECORD;
+            }
+        });
+        legitAttack.setVisibility(new java.util.function.BooleanSupplier() {
             @Override
             public boolean getAsBoolean() {
                 return clickMode.getValue() != ClickMode.RECORD;
