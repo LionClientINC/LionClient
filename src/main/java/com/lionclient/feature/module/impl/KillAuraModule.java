@@ -65,6 +65,7 @@ public final class KillAuraModule extends Module {
     private long lastClickAt;
     private long holdStartAt;
     private long lastSwingAt;
+    private long blockReleaseAt;
     private boolean attackHeld;
     private boolean blocking;
     private boolean hasRotation;
@@ -260,10 +261,23 @@ public final class KillAuraModule extends Module {
             return;
         }
 
-        unblock(minecraft);
-        if (minecraft.thePlayer.swingProgress > minecraft.thePlayer.prevSwingProgress && minecraft.thePlayer.ticksExisted % 15 == 0) {
-            KeyBinding.onTick(minecraft.gameSettings.keyBindUseItem.getKeyCode());
+        long now = System.currentTimeMillis();
+        if (blocking && now >= blockReleaseAt) {
+            unblock(minecraft);
         }
+
+        if (minecraft.thePlayer.swingProgress > minecraft.thePlayer.prevSwingProgress && minecraft.thePlayer.ticksExisted % 15 == 0) {
+            legitBlock(minecraft, now);
+        }
+    }
+
+    private void legitBlock(Minecraft minecraft, long now) {
+        int useKey = minecraft.gameSettings.keyBindUseItem.getKeyCode();
+        sendUseItem(minecraft.thePlayer, minecraft.theWorld, minecraft.thePlayer.getHeldItem());
+        KeyBinding.setKeyBindState(useKey, true);
+        KeyBinding.onTick(useKey);
+        blocking = true;
+        blockReleaseAt = now + 80L;
     }
 
     private EntityPlayer findTarget(Minecraft minecraft) {
@@ -721,6 +735,7 @@ public final class KillAuraModule extends Module {
         lastClickAt = 0L;
         holdStartAt = 0L;
         lastSwingAt = 0L;
+        blockReleaseAt = 0L;
         speedSeconds = 0.0D;
         holdLengthSeconds = 0.0D;
         stopClicker = false;
