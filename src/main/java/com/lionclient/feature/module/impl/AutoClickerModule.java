@@ -52,6 +52,18 @@ public final class AutoClickerModule extends Module {
         super("LeftClicker", "Automatically clicks for you, use mode Record for strict anticheats like Polar.", Category.COMBAT, Keyboard.KEY_NONE);
         guiClickMethod = findGuiClickMethod();
         leftClickCounterField = findLeftClickCounterField();
+        minCps.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() != Mode.RECORD;
+            }
+        });
+        maxCps.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() != Mode.RECORD;
+            }
+        });
         addSetting(mode);
         addSetting(breakBlocks);
         addSetting(weaponOnly);

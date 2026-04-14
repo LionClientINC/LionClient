@@ -3,11 +3,14 @@ package com.lionclient.feature.module.impl;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.BooleanSetting;
+import com.lionclient.feature.setting.EnumSetting;
 import com.lionclient.feature.setting.NumberSetting;
+import java.util.List;
 import java.util.Random;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.item.ItemBlock;
+import net.minecraft.util.ChatComponentText;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
@@ -15,6 +18,7 @@ import org.lwjgl.input.Mouse;
 public final class RightClickerModule extends Module {
     private final Random random = new Random();
 
+    private final EnumSetting<Mode> mode = new EnumSetting<Mode>("Mode", Mode.values(), Mode.NORMAL);
     private final BooleanSetting onlyBlocks = new BooleanSetting("Only Blocks", false);
     private final NumberSetting minCps = new NumberSetting("Min CPS", 1, 25, 1, 9);
     private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 13);
@@ -22,11 +26,28 @@ public final class RightClickerModule extends Module {
 
     private long lastClick;
     private long holdUntil;
+    private long recordNextClickTime;
     private int burstTicks;
+    private int recordIndex;
     private boolean rightDown;
+    private boolean recordNoticeShown;
+    private Mode lastMode;
 
     public RightClickerModule() {
         super("RightClicker", "Automatically right-clicks for you.", Category.COMBAT, Keyboard.KEY_NONE);
+        minCps.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() != Mode.RECORD;
+            }
+        });
+        maxCps.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() != Mode.RECORD;
+            }
+        });
+        addSetting(mode);
         addSetting(onlyBlocks);
         addSetting(minCps);
         addSetting(maxCps);
@@ -51,6 +72,10 @@ public final class RightClickerModule extends Module {
         }
 
         normalizeRanges();
+        if (mode.getValue() != lastMode) {
+            resetClickState();
+            lastMode = mode.getValue();
+        }
         if (minecraft.currentScreen != null || !minecraft.inGameHasFocus) {
             stopAutoClicking();
             return;
@@ -68,6 +93,10 @@ public final class RightClickerModule extends Module {
         }
 
         applyJitter(minecraft);
+        if (mode.getValue() == Mode.RECORD) {
+            recordClick();
+            return;
+        }
         normalClick();
     }
 
@@ -94,6 +123,37 @@ public final class RightClickerModule extends Module {
         if (pressed) {
             KeyBinding.onTick(key);
         }
+    }
+
+    private void recordClick() {
+        List<Integer> delays = ClickPatternStore.getDelays();
+        if (delays.isEmpty()) {
+            if (!recordNoticeShown) {
+                sendChat("No recorded pattern. Use ClickRecorder in CLIENT first.");
+                recordNoticeShown = true;
+            }
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (recordNextClickTime < 0L) {
+            recordNextClickTime = now;
+        }
+
+        if (now < recordNextClickTime) {
+            return;
+        }
+
+        sendClick(true);
+        sendClick(false);
+
+        recordIndex++;
+        if (recordIndex >= delays.size()) {
+            recordIndex = 0;
+        }
+
+        recordNextClickTime = now + Math.max(0, delays.get(recordIndex).intValue());
+        recordNoticeShown = false;
     }
 
     private void applyJitter(Minecraft minecraft) {
@@ -132,6 +192,9 @@ public final class RightClickerModule extends Module {
     private void resetClickState() {
         lastClick = 0L;
         holdUntil = 0L;
+        recordNextClickTime = -1L;
+        recordIndex = 0;
+        recordNoticeShown = false;
         resetPhysicalState();
     }
 
@@ -164,5 +227,17 @@ public final class RightClickerModule extends Module {
 
     private float clampPitch(float pitch) {
         return Math.max(-90.0F, Math.min(90.0F, pitch));
+    }
+
+    private void sendChat(String text) {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.thePlayer != null) {
+            minecraft.thePlayer.addChatMessage(new ChatComponentText("[RightClicker] " + text));
+        }
+    }
+
+    private enum Mode {
+        NORMAL,
+        RECORD
     }
 }

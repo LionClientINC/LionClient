@@ -78,6 +78,18 @@ public final class KillAuraModule extends Module {
 
     public KillAuraModule() {
         super("KillAura", "Attacks nearby players with Raven-style rotations and timings.", Category.COMBAT, Keyboard.KEY_NONE);
+        minCps.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return clickMode.getValue() != ClickMode.RECORD;
+            }
+        });
+        maxCps.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return clickMode.getValue() != ClickMode.RECORD;
+            }
+        });
         addSetting(lookRange);
         addSetting(reach);
         addSetting(minCps);

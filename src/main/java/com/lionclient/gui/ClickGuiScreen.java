@@ -146,6 +146,9 @@ public final class ClickGuiScreen extends GuiScreen {
 
                 if (expandedModule == module) {
                     for (Setting setting : module.getSettings()) {
+                        if (!setting.isVisible()) {
+                            continue;
+                        }
                         Gui.drawRect(x + 4, rowY, x + WIDTH - 4, rowY + ROW_HEIGHT, 0x9040485C);
                         fontRenderer.drawString(setting.getName(), x + 6, rowY + 3, 0xFFE8EAF1);
                         fontRenderer.drawString(setting.getValueText(), x + WIDTH - 6 - fontRenderer.getStringWidth(setting.getValueText()), rowY + 3, 0xFF000000 | accent);
@@ -199,6 +202,9 @@ public final class ClickGuiScreen extends GuiScreen {
 
                 if (expandedModule == module) {
                     for (Setting setting : module.getSettings()) {
+                        if (!setting.isVisible()) {
+                            continue;
+                        }
                         if (isHovered(mouseX, mouseY, x + 4, rowY, WIDTH - 8, ROW_HEIGHT)) {
                             handleSettingClick(setting, mouseButton, module);
                             return;
@@ -228,7 +234,11 @@ public final class ClickGuiScreen extends GuiScreen {
         private int getContentHeight() {
             int rows = modules.size();
             if (expandedModule != null) {
-                rows += expandedModule.getSettings().size();
+                for (Setting setting : expandedModule.getSettings()) {
+                    if (setting.isVisible()) {
+                        rows++;
+                    }
+                }
                 if (expandedModule.showsKeybindSetting()) {
                     rows++;
                 }
