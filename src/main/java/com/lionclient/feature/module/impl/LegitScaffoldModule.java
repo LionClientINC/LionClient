@@ -2,7 +2,7 @@ package com.lionclient.feature.module.impl;
 
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
-import com.lionclient.feature.setting.EnumSetting;
+import com.lionclient.feature.setting.BooleanSetting;
 import com.lionclient.feature.setting.NumberSetting;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
@@ -18,14 +18,14 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 public final class LegitScaffoldModule extends Module {
-    private final EnumSetting<Mode> mode = new EnumSetting<Mode>("Mode", Mode.values(), Mode.LEGIT);
+    private final BooleanSetting pitchCheck = new BooleanSetting("Pitch Check", true);
     private final NumberSetting sneakDelay = new NumberSetting("Sneak Delay", 0, 250, 5, 60);
 
     private long sneakReleaseTime;
 
     public LegitScaffoldModule() {
         super("LegitScaffold", "Sneaks at block edges.", Category.MOVEMENT, Keyboard.KEY_NONE);
-        addSetting(mode);
+        addSetting(pitchCheck);
         addSetting(sneakDelay);
     }
 
@@ -43,7 +43,7 @@ public final class LegitScaffoldModule extends Module {
             return;
         }
 
-        boolean shouldSneakAtEdge = mode.getValue() == Mode.LEGIT && shouldSneakAtEdge(player);
+        boolean shouldSneakAtEdge = shouldSneakAtEdge(player);
         if (shouldSneakAtEdge) {
             KeyBinding.setKeyBindState(sneakKey, true);
             if (shouldExtendSneakDelay(minecraft)) {
@@ -73,18 +73,66 @@ public final class LegitScaffoldModule extends Module {
             return false;
         }
 
+        if (pitchCheck.isEnabled()) {
+            return shouldSneakWithPitchCheck(player);
+        }
+
+        return shouldSneakSafewalk(player);
+    }
+
+    private boolean shouldSneakWithPitchCheck(EntityPlayerSP player) {
         if (player.movementInput.moveForward >= 0.0F) {
             return false;
         }
 
-        World world = Minecraft.getMinecraft().theWorld;
         double[] movement = getMovementOffset(player);
+        if (Math.abs(movement[0]) < 1.0E-4D && Math.abs(movement[1]) < 1.0E-4D) {
+            return false;
+        }
+
+        return isEdgeUnsafe(player, movement[0], movement[1]);
+    }
+
+    private boolean shouldSneakSafewalk(EntityPlayerSP player) {
+        double motionX = player.motionX;
+        double motionZ = player.motionZ;
+        double projectedX = MathHelper.clamp_double(motionX, -0.32D, 0.32D);
+        double projectedZ = MathHelper.clamp_double(motionZ, -0.32D, 0.32D);
+        if (Math.abs(projectedX) < 1.0E-3D && Math.abs(projectedZ) < 1.0E-3D) {
+            projectedX = MathHelper.clamp_double(player.moveStrafing * 0.12D, -0.12D, 0.12D);
+            projectedZ = MathHelper.clamp_double(player.moveForward * 0.12D, -0.12D, 0.12D);
+        }
+
+        if (Math.abs(projectedX) < 1.0E-3D && Math.abs(projectedZ) < 1.0E-3D) {
+            return isStandingOnEdge(player);
+        }
+
+        return isEdgeUnsafe(player, projectedX, projectedZ);
+    }
+
+    private boolean isStandingOnEdge(EntityPlayerSP player) {
+        AxisAlignedBB box = player.getEntityBoundingBox();
+        World world = Minecraft.getMinecraft().theWorld;
+        double sampleY = box.minY - 0.08D;
+        double insetX = Math.min(0.28D, (box.maxX - box.minX) * 0.5D - 0.02D);
+        double insetZ = Math.min(0.28D, (box.maxZ - box.minZ) * 0.5D - 0.02D);
+
+        boolean corner1 = hasSupport(world, player.posX + insetX, sampleY, player.posZ + insetZ);
+        boolean corner2 = hasSupport(world, player.posX + insetX, sampleY, player.posZ - insetZ);
+        boolean corner3 = hasSupport(world, player.posX - insetX, sampleY, player.posZ + insetZ);
+        boolean corner4 = hasSupport(world, player.posX - insetX, sampleY, player.posZ - insetZ);
+        return !(corner1 && corner2 && corner3 && corner4);
+    }
+
+    private boolean isEdgeUnsafe(EntityPlayerSP player, double offsetX, double offsetZ) {
+        World world = Minecraft.getMinecraft().theWorld;
+        double[] movement = new double[] {offsetX, offsetZ};
         AxisAlignedBB box = player.getEntityBoundingBox();
         AxisAlignedBB projectedBox = box.offset(movement[0], 0.0D, movement[1]);
         double sampleY = projectedBox.minY - 0.08D;
         double[] lateral = getLateralOffset(movement);
-        double leadX = player.posX + movement[0];
-        double leadZ = player.posZ + movement[1];
+        double leadX = (projectedBox.minX + projectedBox.maxX) * 0.5D;
+        double leadZ = (projectedBox.minZ + projectedBox.maxZ) * 0.5D;
         double sideReach = Math.max(0.20D, (projectedBox.maxX - projectedBox.minX) * 0.48D);
         double sideX = lateral[0] * sideReach;
         double sideZ = lateral[1] * sideReach;
@@ -146,14 +194,5 @@ public final class LegitScaffoldModule extends Module {
     private void releaseSneak(int sneakKey) {
         sneakReleaseTime = 0L;
         KeyBinding.setKeyBindState(sneakKey, false);
-    }
-
-    private enum Mode {
-        LEGIT;
-
-        @Override
-        public String toString() {
-            return "Legit";
-        }
     }
 }
