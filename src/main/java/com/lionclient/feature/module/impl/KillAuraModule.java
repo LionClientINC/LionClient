@@ -19,6 +19,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.network.play.client.C07PacketPlayerDigging;
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.EnumFacing;
@@ -43,13 +44,11 @@ public final class KillAuraModule extends Module {
     private final DecimalSetting reach = new DecimalSetting("Reach", 3.0D, 6.0D, 0.1D, 3.3D);
     private final NumberSetting minCps = new NumberSetting("Min CPS", 1, 25, 1, 9);
     private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 13);
-    private final BooleanSetting customRotationSpeed = new BooleanSetting("Custom Rot Speed", false);
-    private final NumberSetting rotationSpeed = new NumberSetting("Rotation Speed", 10, 100, 1, 50);
     private final BooleanSetting legitAttack = new BooleanSetting("Use Legit Clicker", true);
+    private final EnumSetting<ClickMode> clickMode = new EnumSetting<ClickMode>("Click Mode", ClickMode.values(), ClickMode.NORMAL);
     private final BooleanSetting weaponOnly = new BooleanSetting("Weapon Only", false);
     private final BooleanSetting fixMovement = new BooleanSetting("Movement Fix", true);
     private final BooleanSetting visuals = new BooleanSetting("Visuals", false);
-    private final EnumSetting<BlockMode> blockMode = new EnumSetting<BlockMode>("Block Mode", BlockMode.values(), BlockMode.LEGIT);
 
     private EntityPlayer target;
     private List<EntityPlayer> playerTargets = new ArrayList<EntityPlayer>();
@@ -72,6 +71,9 @@ public final class KillAuraModule extends Module {
     private double speedSeconds;
     private double holdLengthSeconds;
     private boolean stopClicker;
+    private long recordNextClickTime;
+    private int recordIndex;
+    private boolean recordNoticeShown;
 
     public KillAuraModule() {
         super("KillAura", "Attacks nearby players with Raven-style rotations and timings.", Category.COMBAT, Keyboard.KEY_NONE);
@@ -79,13 +81,11 @@ public final class KillAuraModule extends Module {
         addSetting(reach);
         addSetting(minCps);
         addSetting(maxCps);
-        addSetting(customRotationSpeed);
-        addSetting(rotationSpeed);
         addSetting(legitAttack);
+        addSetting(clickMode);
         addSetting(weaponOnly);
         addSetting(fixMovement);
         addSetting(visuals);
-        addSetting(blockMode);
     }
 
     @Override
@@ -181,6 +181,11 @@ public final class KillAuraModule extends Module {
 
     private void handleAttack(Minecraft minecraft) {
         long now = System.currentTimeMillis();
+        if (clickMode.getValue() == ClickMode.RECORD) {
+            handleRecordAttack(minecraft, now);
+            return;
+        }
+
         if (legitAttack.isEnabled()) {
             if (now - lastClickAt > speedSeconds * 1000.0D) {
                 lastClickAt = now;
@@ -214,38 +219,50 @@ public final class KillAuraModule extends Module {
         lastSwingAt = now;
     }
 
+    private void handleRecordAttack(Minecraft minecraft, long now) {
+        List<Integer> delays = ClickPatternStore.getDelays();
+        if (delays.isEmpty()) {
+            if (!recordNoticeShown) {
+                sendChat("No recorded pattern. Use ClickRecorder in CLIENT first.");
+                recordNoticeShown = true;
+            }
+            return;
+        }
+
+        if (recordNextClickTime < 0L) {
+            recordNextClickTime = now;
+        }
+
+        if (now < recordNextClickTime) {
+            return;
+        }
+
+        if (legitAttack.isEnabled()) {
+            performLegitAttack(minecraft);
+            sendAttackKey(minecraft, false);
+        } else if (canAttackTarget(minecraft, target)) {
+            minecraft.thePlayer.swingItem();
+            minecraft.playerController.attackEntity(minecraft.thePlayer, target);
+        }
+
+        recordIndex++;
+        if (recordIndex >= delays.size()) {
+            recordIndex = 0;
+        }
+
+        recordNextClickTime = now + Math.max(0, delays.get(recordIndex).intValue());
+        recordNoticeShown = false;
+    }
+
     private void handleBlock(Minecraft minecraft) {
-        if (target == null || !isHoldingSword(minecraft)) {
+        if (target == null || !isHoldingSword(minecraft) || !canAttackTarget(minecraft, target)) {
             unblock(minecraft);
             return;
         }
 
-        switch (blockMode.getValue()) {
-            case VANILLA:
-                if (canAttackTarget(minecraft, target)) {
-                    block(minecraft);
-                } else {
-                    unblock(minecraft);
-                }
-                break;
-            case DAMAGE:
-                if (minecraft.thePlayer.hurtTime > 0 && canAttackTarget(minecraft, target)) {
-                    block(minecraft);
-                } else {
-                    unblock(minecraft);
-                }
-                break;
-            case LEGIT:
-                unblock(minecraft);
-                if (minecraft.thePlayer.swingProgress > minecraft.thePlayer.prevSwingProgress && minecraft.thePlayer.ticksExisted % 15 == 0) {
-                    KeyBinding.onTick(minecraft.gameSettings.keyBindUseItem.getKeyCode());
-                }
-                break;
-            case NONE:
-            case FAKE:
-            default:
-                unblock(minecraft);
-                break;
+        unblock(minecraft);
+        if (minecraft.thePlayer.swingProgress > minecraft.thePlayer.prevSwingProgress && minecraft.thePlayer.ticksExisted % 15 == 0) {
+            KeyBinding.onTick(minecraft.gameSettings.keyBindUseItem.getKeyCode());
         }
     }
 
@@ -317,13 +334,10 @@ public final class KillAuraModule extends Module {
 
         float nextYaw = desiredYaw;
         float nextPitch = desiredPitch;
-        if (customRotationSpeed.isEnabled()) {
-            float speed = rotationSpeed.getValue();
-            float baseYaw = hasRotation ? currentYaw : player.rotationYaw;
-            float basePitch = hasRotation ? currentPitch : player.rotationPitch;
-            nextYaw = maxAngleChange(baseYaw, nextYaw, speed);
-            nextPitch = maxAngleChange(basePitch, nextPitch, speed);
-        }
+        float baseYaw = hasRotation ? currentYaw : player.rotationYaw;
+        float basePitch = hasRotation ? currentPitch : player.rotationPitch;
+        nextYaw = maxAngleChange(baseYaw, nextYaw, 100.0F);
+        nextPitch = maxAngleChange(basePitch, nextPitch, 100.0F);
 
         float[] snapped = applyGcd(minecraft, nextYaw, nextPitch, hasRotation ? currentYaw : player.rotationYaw, hasRotation ? currentPitch : player.rotationPitch);
         currentYaw = snapped[0];
@@ -680,6 +694,9 @@ public final class KillAuraModule extends Module {
         target = null;
         playerTargets = new ArrayList<EntityPlayer>();
         hasRotation = false;
+        recordNextClickTime = -1L;
+        recordIndex = 0;
+        recordNoticeShown = false;
         if (attackHeld) {
             sendAttackKey(Minecraft.getMinecraft(), false);
         }
@@ -707,7 +724,17 @@ public final class KillAuraModule extends Module {
         speedSeconds = 0.0D;
         holdLengthSeconds = 0.0D;
         stopClicker = false;
+        recordNextClickTime = -1L;
+        recordIndex = 0;
+        recordNoticeShown = false;
         clearTargetState();
+    }
+
+    private void sendChat(String text) {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.thePlayer != null) {
+            minecraft.thePlayer.addChatMessage(new ChatComponentText("[KillAura] " + text));
+        }
     }
 
     private static java.lang.reflect.Field findC03Field(String... names) {
@@ -731,11 +758,8 @@ public final class KillAuraModule extends Module {
         }
     }
 
-    private enum BlockMode {
-        NONE,
-        LEGIT,
-        VANILLA,
-        DAMAGE,
-        FAKE
+    private enum ClickMode {
+        NORMAL,
+        RECORD
     }
 }
