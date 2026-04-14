@@ -138,6 +138,14 @@ public final class ModuleManager {
         return delay;
     }
 
+    public void onOutboundPacket(Packet<?> packet) {
+        for (Module module : modules) {
+            if (module.isEnabled()) {
+                module.onOutboundPacket(packet);
+            }
+        }
+    }
+
     public void onInboundPacket(Packet<?> packet) {
         for (Module module : modules) {
             if (module.isEnabled()) {

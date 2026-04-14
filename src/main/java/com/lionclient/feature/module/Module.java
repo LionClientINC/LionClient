@@ -124,6 +124,9 @@ public abstract class Module {
         return 0;
     }
 
+    public void onOutboundPacket(Packet<?> packet) {
+    }
+
     public void onInboundPacket(Packet<?> packet) {
     }
 

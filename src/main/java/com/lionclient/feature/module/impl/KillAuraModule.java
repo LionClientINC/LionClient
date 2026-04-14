@@ -16,6 +16,7 @@ import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.network.play.client.C07PacketPlayerDigging;
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
 import net.minecraft.util.AxisAlignedBB;
@@ -27,10 +28,15 @@ import net.minecraft.world.World;
 import net.minecraft.world.WorldSettings;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
+import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
 public final class KillAuraModule extends Module {
+    private static final java.lang.reflect.Field C03_YAW_FIELD = findC03Field("yaw", "field_149476_e");
+    private static final java.lang.reflect.Field C03_PITCH_FIELD = findC03Field("pitch", "field_149473_f");
+    private static final java.lang.reflect.Field C03_ROTATING_FIELD = findC03Field("rotating", "field_149481_i");
+
     private final Random random = new Random();
 
     private final DecimalSetting lookRange = new DecimalSetting("Look Range", 3.0D, 10.0D, 0.1D, 6.0D);
@@ -47,6 +53,8 @@ public final class KillAuraModule extends Module {
 
     private EntityPlayer target;
     private List<EntityPlayer> playerTargets = new ArrayList<EntityPlayer>();
+    private float serverYaw;
+    private float serverPitch;
     private float desiredYaw;
     private float desiredPitch;
     private float currentYaw;
@@ -134,13 +142,11 @@ public final class KillAuraModule extends Module {
         }
 
         if (event.phase == net.minecraftforge.fml.common.gameevent.TickEvent.Phase.START) {
-            applyRotations(minecraft);
             applyMovementFix(minecraft);
             return;
         }
 
-        minecraft.thePlayer.rotationYawHead = currentYaw;
-        minecraft.thePlayer.renderYawOffset = currentYaw;
+        applyRenderRotations(minecraft);
     }
 
     @Override
@@ -181,7 +187,7 @@ public final class KillAuraModule extends Module {
                 if (holdStartAt < lastClickAt) {
                     holdStartAt = lastClickAt;
                 }
-                sendAttackKey(minecraft, true);
+                performLegitAttack(minecraft);
                 attackHeld = true;
                 stopClicker = false;
                 updateVals();
@@ -322,6 +328,8 @@ public final class KillAuraModule extends Module {
         float[] snapped = applyGcd(minecraft, nextYaw, nextPitch, hasRotation ? currentYaw : player.rotationYaw, hasRotation ? currentPitch : player.rotationPitch);
         currentYaw = snapped[0];
         currentPitch = snapped[1];
+        serverYaw = currentYaw;
+        serverPitch = currentPitch;
         if (!hasRotation) {
             previousYaw = currentYaw;
             previousPitch = currentPitch;
@@ -329,14 +337,24 @@ public final class KillAuraModule extends Module {
         hasRotation = true;
     }
 
-    private void applyRotations(Minecraft minecraft) {
+    private void applyRenderRotations(Minecraft minecraft) {
         EntityPlayerSP player = minecraft.thePlayer;
-        player.prevRotationYaw = previousYaw;
-        player.prevRotationPitch = previousPitch;
-        player.rotationYaw = currentYaw;
-        player.rotationPitch = currentPitch;
+        player.prevRotationYawHead = previousYaw;
+        player.prevRenderYawOffset = previousYaw;
         player.rotationYawHead = currentYaw;
         player.renderYawOffset = currentYaw;
+    }
+
+    @Override
+    public void onOutboundPacket(net.minecraft.network.Packet<?> packet) {
+        if (!hasRotation || !(packet instanceof C03PacketPlayer)) {
+            return;
+        }
+
+        C03PacketPlayer playerPacket = (C03PacketPlayer) packet;
+        setField(C03_YAW_FIELD, playerPacket, Float.valueOf(serverYaw));
+        setField(C03_PITCH_FIELD, playerPacket, Float.valueOf(serverPitch));
+        setField(C03_ROTATING_FIELD, playerPacket, Boolean.TRUE);
     }
 
     private void applyMovementFix(Minecraft minecraft) {
@@ -476,6 +494,16 @@ public final class KillAuraModule extends Module {
         if (pressed) {
             KeyBinding.onTick(keyCode);
         }
+    }
+
+    private void performLegitAttack(Minecraft minecraft) {
+        sendAttackKey(minecraft, true);
+        if (target == null || !canAttackTarget(minecraft, target)) {
+            return;
+        }
+
+        minecraft.thePlayer.swingItem();
+        minecraft.playerController.attackEntity(minecraft.thePlayer, target);
     }
 
     private boolean isHoldingWeapon(Minecraft minecraft) {
@@ -665,6 +693,8 @@ public final class KillAuraModule extends Module {
     private void resetState() {
         desiredYaw = 0.0F;
         desiredPitch = 0.0F;
+        serverYaw = 0.0F;
+        serverPitch = 0.0F;
         currentYaw = 0.0F;
         currentPitch = 0.0F;
         previousYaw = 0.0F;
@@ -678,6 +708,27 @@ public final class KillAuraModule extends Module {
         holdLengthSeconds = 0.0D;
         stopClicker = false;
         clearTargetState();
+    }
+
+    private static java.lang.reflect.Field findC03Field(String... names) {
+        try {
+            java.lang.reflect.Field field = ReflectionHelper.findField(C03PacketPlayer.class, names);
+            field.setAccessible(true);
+            return field;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static void setField(java.lang.reflect.Field field, Object target, Object value) {
+        if (field == null || target == null) {
+            return;
+        }
+
+        try {
+            field.set(target, value);
+        } catch (IllegalAccessException ignored) {
+        }
     }
 
     private enum BlockMode {

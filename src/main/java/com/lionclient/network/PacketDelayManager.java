@@ -161,6 +161,7 @@ public final class PacketDelayManager {
         public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) throws Exception {
             if (!flushing && message instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) message;
+                moduleManager.onOutboundPacket(packet);
                 int delay = moduleManager.getOutboundPacketDelay(packet);
                 if (delay > 0) {
                     synchronized (queue) {
