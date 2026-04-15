@@ -55,7 +55,7 @@ public final class PlayerEspModule extends Module {
             }
 
             EntityPlayer player = (EntityPlayer) object;
-            if (player == minecraft.thePlayer || player.isInvisible()) {
+            if (player == minecraft.thePlayer || player.isInvisible() || AntiBotModule.shouldIgnore(player)) {
                 continue;
             }
 

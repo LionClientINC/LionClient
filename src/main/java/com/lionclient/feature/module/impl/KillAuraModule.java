@@ -355,7 +355,8 @@ public final class KillAuraModule extends Module {
             && player != self
             && !player.isDead
             && player.getHealth() > 0.0F
-            && !player.isInvisible();
+            && !player.isInvisible()
+            && !AntiBotModule.shouldIgnore(player);
     }
 
     private void updateRotationState(Minecraft minecraft) {

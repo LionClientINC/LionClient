@@ -2,6 +2,7 @@ package com.lionclient.feature.module;
 
 import com.lionclient.config.ConfigManager;
 import com.lionclient.feature.module.impl.AutoClickerModule;
+import com.lionclient.feature.module.impl.AntiBotModule;
 import com.lionclient.feature.module.impl.BedPlatesModule;
 import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
@@ -47,6 +48,7 @@ public final class ModuleManager {
         register(new AutoClickerModule());
         register(new RightClickerModule());
         register(new ReachModule());
+        register(new AntiBotModule());
         register(new KillAuraModule());
         register(new FakeLagModule());
         register(new KnockbackDelayModule());
@@ -72,6 +74,15 @@ public final class ModuleManager {
 
     public List<Module> getModules(Category category) {
         return Collections.unmodifiableList(modulesByCategory.get(category));
+    }
+
+    public <T extends Module> T getModule(Class<T> moduleClass) {
+        for (Module module : modules) {
+            if (moduleClass.isInstance(module)) {
+                return moduleClass.cast(module);
+            }
+        }
+        return null;
     }
 
     public void onClientTick() {
