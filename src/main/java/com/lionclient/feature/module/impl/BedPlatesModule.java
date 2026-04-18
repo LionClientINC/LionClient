@@ -39,7 +39,7 @@ public final class BedPlatesModule extends Module {
     private static final int FALLBACK_RESCAN_INTERVAL_TICKS = 240;
     private static final int FALLBACK_RESCAN_CHUNKS_PER_TICK = 1;
 
-    private final NumberSetting range = new NumberSetting("Range", 5, 64, 1, 24);
+    private final NumberSetting range = new NumberSetting("Range", 5, 128, 1, 128);
     private final NumberSetting layers = new NumberSetting("Layers", 1, 4, 1, 2);
     private final BooleanSetting showDistance = new BooleanSetting("Show Distance", true);
 
