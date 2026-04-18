@@ -29,7 +29,7 @@ public final class KnockbackDelayModule extends Module {
     private float lastHealth = -1.0F;
 
     public KnockbackDelayModule() {
-        super("KnockbackDelay", "Delays all packets for a set period after knockback.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("KnockbackDelay [INVDEV]", "Delays all packets for a set period after knockback.", Category.COMBAT, Keyboard.KEY_NONE);
         addSetting(delay);
         addSetting(renderIndicator);
     }

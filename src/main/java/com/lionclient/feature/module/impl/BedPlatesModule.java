@@ -38,6 +38,10 @@ import org.lwjgl.opengl.GL11;
 public final class BedPlatesModule extends Module {
     private static final int FALLBACK_RESCAN_INTERVAL_TICKS = 240;
     private static final int FALLBACK_RESCAN_CHUNKS_PER_TICK = 1;
+    private static final float LABEL_BASE_SCALE = 0.026F;
+    private static final float LABEL_DISTANCE_REFERENCE = 32.0F;
+    private static final float LABEL_DISTANCE_MULTIPLIER = 6.0F;
+    private static final float LABEL_MAX_SCALE = 0.30F;
 
     private final NumberSetting range = new NumberSetting("Range", 5, 128, 1, 128);
     private final NumberSetting layers = new NumberSetting("Layers", 1, 4, 1, 2);
@@ -367,7 +371,7 @@ public final class BedPlatesModule extends Module {
             defenseText = defenseText + String.format(Locale.US, " [%.1fm]", Math.sqrt(bed.distanceSq));
         }
 
-        float scale = 0.026F;
+        float scale = getLabelScale(bed.distanceSq);
         GlStateManager.pushMatrix();
         GlStateManager.translate(x, y, z);
         GlStateManager.rotate(-mc.getRenderManager().playerViewY, 0.0F, 1.0F, 0.0F);
@@ -386,6 +390,12 @@ public final class BedPlatesModule extends Module {
         GlStateManager.enableDepth();
         GlStateManager.enableLighting();
         GlStateManager.popMatrix();
+    }
+
+    private float getLabelScale(double distanceSq) {
+        float distance = (float) Math.sqrt(distanceSq);
+        float scaled = LABEL_BASE_SCALE * Math.max(1.0F, (distance / LABEL_DISTANCE_REFERENCE) * LABEL_DISTANCE_MULTIPLIER);
+        return Math.min(LABEL_MAX_SCALE, scaled);
     }
 
     private void drawBackground(int halfWidth) {
