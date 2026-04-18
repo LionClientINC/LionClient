@@ -52,7 +52,7 @@ public final class ClutchModule extends Module {
     private PlacementInfo edgeInfo = null;
 
     public ClutchModule() {
-        super("Clutch", "Automatically places blocks to save falls and bridge to safety.", Category.MOVEMENT, Keyboard.KEY_NONE);
+        super("Clutch [INVDEV]", "Automatically places blocks to save falls and bridge to safety.", Category.MOVEMENT, Keyboard.KEY_NONE);
         addSetting(activationMode);
         addSetting(fallDistanceThreshold);
         addSetting(silentAim);

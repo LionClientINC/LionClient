@@ -17,7 +17,7 @@ public final class KnockbackDelayModule extends Module {
     private static final long TRIGGER_WINDOW_MS = 250L;
 
     private final NumberSetting delay = new NumberSetting("Delay", 0, 2000, 10, 200);
-    private final BooleanSetting renderIndicator = new BooleanSetting("Render Indicator", true);
+    private final BooleanSetting renderIndicator = new BooleanSetting("Render Indicator", false);
 
     private volatile long delayEndAt;
     private volatile long pendingHoldEndAt;
@@ -29,7 +29,7 @@ public final class KnockbackDelayModule extends Module {
     private float lastHealth = -1.0F;
 
     public KnockbackDelayModule() {
-        super("Knockback Delay [INVDEV]", "Delays all packets for a short time after knockback.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("KnockbackDelay", "Delays all packets for a set period after knockback.", Category.COMBAT, Keyboard.KEY_NONE);
         addSetting(delay);
         addSetting(renderIndicator);
     }

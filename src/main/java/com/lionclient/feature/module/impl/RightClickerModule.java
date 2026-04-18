@@ -23,9 +23,9 @@ public final class RightClickerModule extends Module {
     private final Random random = new Random();
 
     private final EnumSetting<Mode> mode = new EnumSetting<Mode>("Mode", Mode.values(), Mode.NORMAL);
-    private final BooleanSetting onlyBlocks = new BooleanSetting("Only Blocks", false);
-    private final NumberSetting minCps = new NumberSetting("Min CPS", 1, 25, 1, 9);
-    private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 13);
+    private final BooleanSetting onlyBlocks = new BooleanSetting("Only Blocks", true);
+    private final NumberSetting minCps = new NumberSetting("Min CPS", 1, 25, 1, 15);
+    private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 22);
     private final NumberSetting jitterStrength = new NumberSetting("Jitter", 0, 10, 1, 0);
 
     private long lastClick;
@@ -38,7 +38,7 @@ public final class RightClickerModule extends Module {
     private Mode lastMode;
 
     public RightClickerModule() {
-        super("RightClicker", "Automatically right-clicks for you.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("RightClicker", "Automatically right-clicks for you, use mode Record for strict anticheats like Polar.", Category.COMBAT, Keyboard.KEY_NONE);
         minCps.setVisibility(new java.util.function.BooleanSupplier() {
             @Override
             public boolean getAsBoolean() {

@@ -13,7 +13,7 @@ public final class ClickRecorderModule extends Module {
     private long lastClickAt;
 
     public ClickRecorderModule() {
-        super("ClickRecorder", "Records left-click timings for AutoClicker record mode.", Category.CLIENT, Keyboard.KEY_NONE);
+        super("ClickRecorder", "Records click timings for record mode, records in only left clicks.", Category.CLIENT, Keyboard.KEY_NONE);
         addSetting(showMessage);
     }
 

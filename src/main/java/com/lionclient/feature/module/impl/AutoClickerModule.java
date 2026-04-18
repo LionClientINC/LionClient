@@ -35,8 +35,8 @@ public final class AutoClickerModule extends Module {
     private final BooleanSetting breakBlocks = new BooleanSetting("Break Blocks", true);
     private final BooleanSetting weaponOnly = new BooleanSetting("Weapon Only", false);
     private final BooleanSetting inventoryFill = new BooleanSetting("Inventory Fill", false);
-    private final NumberSetting minCps = new NumberSetting("Min CPS", 1, 25, 1, 9);
-    private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 13);
+    private final NumberSetting minCps = new NumberSetting("Min CPS", 1, 25, 1, 17);
+    private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 22);
     private final NumberSetting jitterStrength = new NumberSetting("Jitter", 0, 10, 1, 0);
 
     private long lastClick;

@@ -18,7 +18,7 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 public final class LegitScaffoldModule extends Module {
-    private final BooleanSetting pitchCheck = new BooleanSetting("Pitch Check", true);
+    private final BooleanSetting pitchCheck = new BooleanSetting("Pitch Check", false);
     private final NumberSetting sneakDelay = new NumberSetting("Sneak Delay", 0, 250, 5, 60);
 
     private long sneakReleaseTime;
