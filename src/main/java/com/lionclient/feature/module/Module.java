@@ -102,6 +102,9 @@ public abstract class Module {
     public void onClientTick() {
     }
 
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+    }
+
     public void onPlayerTick(TickEvent.PlayerTickEvent event) {
     }
 

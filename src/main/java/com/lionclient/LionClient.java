@@ -56,6 +56,8 @@ public final class LionClient {
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
+        moduleManager.onClientTick(event);
+
         if (event.phase != TickEvent.Phase.END) {
             return;
         }

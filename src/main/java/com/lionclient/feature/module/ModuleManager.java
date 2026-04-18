@@ -93,6 +93,14 @@ public final class ModuleManager {
         }
     }
 
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        for (Module module : modules) {
+            if (module.isEnabled()) {
+                module.onClientTick(event);
+            }
+        }
+    }
+
     public void onPlayerTick(TickEvent.PlayerTickEvent event) {
         for (Module module : modules) {
             if (module.isEnabled()) {
