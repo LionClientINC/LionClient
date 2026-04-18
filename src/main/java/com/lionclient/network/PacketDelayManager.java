@@ -1,51 +1,47 @@
 package com.lionclient.network;
 
 import com.lionclient.feature.module.ModuleManager;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPromise;
-import java.lang.reflect.Field;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.GenericFutureListener;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Queue;
+import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.NetHandlerPlayClient;
-import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
+import net.minecraft.network.ThreadQuickExitException;
+import net.minecraft.network.play.INetHandlerPlayClient;
 
 public final class PacketDelayManager {
-    private static final String HANDLER_NAME = "lionclient_packet_delay";
-    private static final Field CHANNEL_FIELD = findChannelField();
+    private static volatile PacketDelayManager instance;
 
     private final Minecraft minecraft = Minecraft.getMinecraft();
     private final ModuleManager moduleManager;
-    private final Queue<QueuedPacket> outboundQueue = new ArrayDeque<QueuedPacket>();
+    private final Queue<QueuedOutboundPacket> outboundQueue = new ArrayDeque<QueuedOutboundPacket>();
     private final Queue<QueuedInboundPacket> inboundQueue = new ArrayDeque<QueuedInboundPacket>();
-    private final ChannelDuplexHandler handler = new PacketInterceptor();
-
-    private Channel channel;
-    private boolean flushing;
+    private final Set<Packet<?>> outboundFastTrack = Collections.newSetFromMap(
+        Collections.synchronizedMap(new IdentityHashMap<Packet<?>, Boolean>())
+    );
 
     public PacketDelayManager(ModuleManager moduleManager) {
         this.moduleManager = moduleManager;
+        instance = this;
+    }
+
+    public static PacketDelayManager getInstance() {
+        return instance;
     }
 
     public void onClientTick() {
-        Channel currentChannel = resolveChannel();
-        if (currentChannel == null || !currentChannel.isOpen()) {
-            flushQueuedPackets();
-            detachHandler();
+        NetHandlerPlayClient netHandler = minecraft.getNetHandler();
+        if (netHandler == null) {
+            clearQueues();
             return;
-        }
-
-        if (channel != currentChannel) {
-            flushQueuedPackets();
-            detachHandler();
-            channel = currentChannel;
-            attachHandler(currentChannel);
         }
 
         if (moduleManager.consumeOutboundFlushRequest() || moduleManager.consumeFlushRequest()) {
@@ -64,37 +60,53 @@ public final class PacketDelayManager {
         flushReadyInboundPackets();
     }
 
-    public void flushQueuedPackets() {
-        flushQueuedOutboundPackets();
-        flushQueuedInboundPackets();
+    public boolean interceptOutbound(
+        Packet<?> packet,
+        GenericFutureListener<? extends Future<? super Void>>[] listeners
+    ) {
+        if (consumeOutboundFastTrack(packet)) {
+            return false;
+        }
+
+        moduleManager.onOutboundPacket(packet);
+        int delay = moduleManager.getOutboundPacketDelay(packet);
+        if (delay <= 0) {
+            return false;
+        }
+
+        synchronized (outboundQueue) {
+            outboundQueue.add(new QueuedOutboundPacket(packet, System.currentTimeMillis() + delay));
+        }
+        return true;
     }
 
-    public void flushQueuedOutboundPackets() {
-        List<Packet<?>> packets = new ArrayList<Packet<?>>();
+    public boolean interceptInbound(ChannelHandlerContext context, Packet<?> packet) {
+        moduleManager.onInboundPacket(packet);
+        int delay = moduleManager.getInboundPacketDelay(packet);
+        if (delay <= 0) {
+            return false;
+        }
+
+        synchronized (inboundQueue) {
+            inboundQueue.add(new QueuedInboundPacket(packet, System.currentTimeMillis() + delay));
+        }
+        return true;
+    }
+
+    private void flushQueuedOutboundPackets() {
+        List<QueuedOutboundPacket> packets = new ArrayList<QueuedOutboundPacket>();
         synchronized (outboundQueue) {
             while (!outboundQueue.isEmpty()) {
-                packets.add(outboundQueue.poll().packet);
+                packets.add(outboundQueue.poll());
             }
         }
 
-        if (channel == null || !channel.isOpen()) {
-            return;
-        }
-
-        try {
-            flushing = true;
-            for (Packet<?> packet : packets) {
-                channel.write(packet);
-            }
-            if (!packets.isEmpty()) {
-                channel.flush();
-            }
-        } finally {
-            flushing = false;
+        for (QueuedOutboundPacket packet : packets) {
+            releaseOutbound(packet.packet);
         }
     }
 
-    public void flushQueuedInboundPackets() {
+    private void flushQueuedInboundPackets() {
         List<QueuedInboundPacket> packets = new ArrayList<QueuedInboundPacket>();
         synchronized (inboundQueue) {
             while (!inboundQueue.isEmpty()) {
@@ -103,171 +115,90 @@ public final class PacketDelayManager {
         }
 
         for (QueuedInboundPacket packet : packets) {
-            releaseInbound(packet);
-        }
-    }
-
-    private void attachHandler(Channel targetChannel) {
-        if (targetChannel.pipeline().get(HANDLER_NAME) != null) {
-            return;
-        }
-
-        try {
-            targetChannel.pipeline().addBefore("packet_handler", HANDLER_NAME, handler);
-        } catch (NoSuchElementException ignored) {
-        }
-    }
-
-    private void detachHandler() {
-        if (channel == null) {
-            return;
-        }
-
-        try {
-            if (channel.pipeline().get(HANDLER_NAME) != null) {
-                channel.pipeline().remove(HANDLER_NAME);
-            }
-        } catch (Exception ignored) {
-        } finally {
-            channel = null;
+            releaseInbound(packet.packet);
         }
     }
 
     private void flushReadyOutboundPackets() {
-        if (channel == null || !channel.isOpen()) {
-            return;
-        }
-
         long now = System.currentTimeMillis();
-        List<Packet<?>> readyPackets = new ArrayList<Packet<?>>();
+        List<QueuedOutboundPacket> packets = new ArrayList<QueuedOutboundPacket>();
         synchronized (outboundQueue) {
             while (!outboundQueue.isEmpty() && outboundQueue.peek().releaseAt <= now) {
-                readyPackets.add(outboundQueue.poll().packet);
+                packets.add(outboundQueue.poll());
             }
         }
 
-        try {
-            flushing = true;
-            for (Packet<?> packet : readyPackets) {
-                channel.write(packet);
-            }
-            if (!readyPackets.isEmpty()) {
-                channel.flush();
-            }
-        } finally {
-            flushing = false;
+        for (QueuedOutboundPacket packet : packets) {
+            releaseOutbound(packet.packet);
         }
     }
 
     private void flushReadyInboundPackets() {
         long now = System.currentTimeMillis();
-        List<QueuedInboundPacket> readyPackets = new ArrayList<QueuedInboundPacket>();
+        List<QueuedInboundPacket> packets = new ArrayList<QueuedInboundPacket>();
         synchronized (inboundQueue) {
             while (!inboundQueue.isEmpty() && inboundQueue.peek().releaseAt <= now) {
-                readyPackets.add(inboundQueue.poll());
+                packets.add(inboundQueue.poll());
             }
         }
 
-        for (QueuedInboundPacket packet : readyPackets) {
-            releaseInbound(packet);
+        for (QueuedInboundPacket packet : packets) {
+            releaseInbound(packet.packet);
         }
     }
 
-    private void releaseInbound(final QueuedInboundPacket queuedPacket) {
-        final ChannelHandlerContext context = queuedPacket.context;
-        if (context == null || context.channel() == null || !context.channel().isOpen()) {
+    private void releaseOutbound(Packet<?> packet) {
+        NetHandlerPlayClient netHandler = minecraft.getNetHandler();
+        if (netHandler == null) {
             return;
         }
 
-        context.channel().eventLoop().execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    context.fireChannelRead(queuedPacket.packet);
-                } catch (Exception ignored) {
-                }
-            }
-        });
+        outboundFastTrack.add(packet);
+        netHandler.addToSendQueue(packet);
     }
 
-    private Channel resolveChannel() {
-        NetHandlerPlayClient handler = minecraft.getNetHandler();
-        if (handler == null || CHANNEL_FIELD == null) {
-            return null;
+    private void releaseInbound(Packet<?> packet) {
+        NetHandlerPlayClient netHandler = minecraft.getNetHandler();
+        if (netHandler == null) {
+            return;
         }
 
         try {
-            NetworkManager networkManager = handler.getNetworkManager();
-            return networkManager == null ? null : (Channel) CHANNEL_FIELD.get(networkManager);
-        } catch (IllegalAccessException ignored) {
-            return null;
-        }
-    }
-
-    private static Field findChannelField() {
-        try {
-            Field field = NetworkManager.class.getDeclaredField("channel");
-            field.setAccessible(true);
-            return field;
+            ((Packet<INetHandlerPlayClient>) packet).processPacket(netHandler);
+        } catch (ThreadQuickExitException ignored) {
         } catch (Exception ignored) {
-            return null;
         }
     }
 
-    private final class PacketInterceptor extends ChannelDuplexHandler {
-        @Override
-        public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) throws Exception {
-            if (!flushing && message instanceof Packet<?>) {
-                Packet<?> packet = (Packet<?>) message;
-                moduleManager.onOutboundPacket(packet);
-                int delay = moduleManager.getOutboundPacketDelay(packet);
-                if (delay > 0) {
-                    synchronized (outboundQueue) {
-                        outboundQueue.add(new QueuedPacket(packet, System.currentTimeMillis() + delay));
-                    }
-                    promise.setSuccess();
-                    return;
-                }
-            }
-
-            super.write(context, message, promise);
-        }
-
-        @Override
-        public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
-            if (message instanceof Packet<?>) {
-                Packet<?> packet = (Packet<?>) message;
-                moduleManager.onInboundPacket(packet);
-                int delay = moduleManager.getInboundPacketDelay(packet);
-                if (delay > 0) {
-                    synchronized (inboundQueue) {
-                        inboundQueue.add(new QueuedInboundPacket(context, packet, System.currentTimeMillis() + delay));
-                    }
-                    return;
-                }
-            }
-
-            super.channelRead(context, message);
-        }
+    private boolean consumeOutboundFastTrack(Packet<?> packet) {
+        return outboundFastTrack.remove(packet);
     }
 
-    private static final class QueuedPacket {
+    private void clearQueues() {
+        synchronized (outboundQueue) {
+            outboundQueue.clear();
+        }
+        synchronized (inboundQueue) {
+            inboundQueue.clear();
+        }
+        outboundFastTrack.clear();
+    }
+
+    private static final class QueuedOutboundPacket {
         private final Packet<?> packet;
         private final long releaseAt;
 
-        private QueuedPacket(Packet<?> packet, long releaseAt) {
+        private QueuedOutboundPacket(Packet<?> packet, long releaseAt) {
             this.packet = packet;
             this.releaseAt = releaseAt;
         }
     }
 
     private static final class QueuedInboundPacket {
-        private final ChannelHandlerContext context;
         private final Packet<?> packet;
         private final long releaseAt;
 
-        private QueuedInboundPacket(ChannelHandlerContext context, Packet<?> packet, long releaseAt) {
-            this.context = context;
+        private QueuedInboundPacket(Packet<?> packet, long releaseAt) {
             this.packet = packet;
             this.releaseAt = releaseAt;
         }

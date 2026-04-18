@@ -9,14 +9,20 @@ buildscript {
             name = "sonatype"
             url = "https://oss.sonatype.org/content/repositories/snapshots/"
         }
+        maven {
+            name = "sponge"
+            url = "https://repo.spongepowered.org/maven/"
+        }
     }
     dependencies {
         classpath "net.minecraftforge.gradle:ForgeGradle:2.1-SNAPSHOT"
+        classpath "org.spongepowered:mixingradle:0.6-SNAPSHOT"
     }
 }
 
 apply plugin: "java"
 apply plugin: "net.minecraftforge.gradle.forge"
+apply plugin: "org.spongepowered.mixin"
 
 version = "1.0.0"
 group = "com.lionclient"
@@ -29,6 +35,30 @@ minecraft {
     runDir = "run"
     mappings = "stable_22"
     makeObfSourceJar = false
+    clientRunArgs += ["--tweakClass", "org.spongepowered.asm.launch.MixinTweaker", "--mixin", "mixins.lionclient.json"]
+    serverRunArgs += ["--tweakClass", "org.spongepowered.asm.launch.MixinTweaker", "--mixin", "mixins.lionclient.json"]
+}
+
+repositories {
+    maven {
+        name = "sponge"
+        url = "https://repo.spongepowered.org/maven/"
+    }
+}
+
+configurations {
+    shade
+    compile.extendsFrom(shade)
+}
+
+dependencies {
+    shade("org.spongepowered:mixin:0.7.11-SNAPSHOT") {
+        exclude module: "launchwrapper"
+        exclude module: "guava"
+        exclude module: "gson"
+        exclude module: "commons-io"
+        exclude module: "log4j-core"
+    }
 }
 
 processResources {
@@ -43,4 +73,26 @@ processResources {
     from(sourceSets.main.resources.srcDirs) {
         exclude "mcmod.info"
     }
+}
+
+sourceSets {
+    main {
+        ext.refMap = "mixins.lionclient.refmap.json"
+    }
+}
+
+jar {
+    from(configurations.shade.collect { it.isDirectory() ? it : zipTree(it) }) {
+        exclude "META-INF/*.RSA", "META-INF/*.SF", "META-INF/MANIFEST.MF"
+        exclude "META-INF/maven/**", "LICENSE.txt"
+    }
+
+    manifest.attributes(
+        "FMLCorePlugin": "com.lionclient.mixin.MixinLoader",
+        "ForceLoadAsMod": true,
+        "FMLCorePluginContainsFMLMod": true,
+        "TweakClass": "org.spongepowered.asm.launch.MixinTweaker",
+        "TweakOrder": 0,
+        "MixinConfigs": "mixins.lionclient.json"
+    )
 }

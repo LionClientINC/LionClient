@@ -60,8 +60,8 @@ public final class LionClient {
             return;
         }
 
-        packetDelayManager.onClientTick();
         moduleManager.onClientTick();
+        packetDelayManager.onClientTick();
     }
 
     @SubscribeEvent
