@@ -32,7 +32,6 @@ import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.ObfuscationReflectionHelper;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
@@ -182,22 +181,6 @@ public final class KillAuraModule extends Module {
         }
 
         applyRenderRotations(minecraft);
-    }
-
-    @Override
-    public void onPlayerJump(LivingEvent.LivingJumpEvent event) {
-        Minecraft minecraft = Minecraft.getMinecraft();
-        if (!fixMovement.isEnabled() || !hasRotation || target == null || event.entityLiving != minecraft.thePlayer) {
-            return;
-        }
-
-        EntityPlayerSP player = minecraft.thePlayer;
-        float delta = MathHelper.wrapAngleTo180_float(currentYaw - movementYaw);
-        float radians = delta * (float) Math.PI / 180.0F;
-        double motionX = player.motionX;
-        double motionZ = player.motionZ;
-        player.motionX = motionX * MathHelper.cos(radians) - motionZ * MathHelper.sin(radians);
-        player.motionZ = motionZ * MathHelper.cos(radians) + motionX * MathHelper.sin(radians);
     }
 
     @Override
@@ -398,7 +381,7 @@ public final class KillAuraModule extends Module {
     }
 
     private void applyMovementFix(Minecraft minecraft) {
-        if (!fixMovement.isEnabled() || !hasRotation || target == null) {
+        if (!fixMovement.isEnabled() || !hasRotation || target == null || !minecraft.thePlayer.onGround) {
             return;
         }
 
