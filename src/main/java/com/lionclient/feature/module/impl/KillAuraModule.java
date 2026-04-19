@@ -6,9 +6,9 @@ import com.lionclient.feature.setting.BooleanSetting;
 import com.lionclient.feature.setting.DecimalSetting;
 import com.lionclient.feature.setting.EnumSetting;
 import com.lionclient.feature.setting.NumberSetting;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
@@ -27,10 +27,15 @@ import net.minecraft.util.MathHelper;
 import net.minecraft.util.Vec3;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldSettings;
+import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.ObfuscationReflectionHelper;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
 public final class KillAuraModule extends Module {
@@ -38,13 +43,11 @@ public final class KillAuraModule extends Module {
     private static final java.lang.reflect.Field C03_PITCH_FIELD = findC03Field("pitch", "field_149473_f");
     private static final java.lang.reflect.Field C03_ROTATING_FIELD = findC03Field("rotating", "field_149481_i");
 
-    private final Random random = new Random();
-
+    private final java.lang.reflect.Field leftClickCounterField;
     private final DecimalSetting lookRange = new DecimalSetting("Look Range", 3.0D, 10.0D, 0.1D, 6.0D);
     private final DecimalSetting reach = new DecimalSetting("Reach", 3.0D, 6.0D, 0.1D, 3.0D);
     private final NumberSetting minCps = new NumberSetting("Min CPS", 1, 25, 1, 16);
     private final NumberSetting maxCps = new NumberSetting("Max CPS", 1, 25, 1, 21);
-    private final BooleanSetting legitAttack = new BooleanSetting("Use Legit Clicker", true);
     private final EnumSetting<ClickMode> clickMode = new EnumSetting<ClickMode>("Click Mode", ClickMode.values(), ClickMode.NORMAL);
     private final BooleanSetting weaponOnly = new BooleanSetting("Weapon Only", false);
     private final BooleanSetting fixMovement = new BooleanSetting("Movement Fix", true);
@@ -61,10 +64,8 @@ public final class KillAuraModule extends Module {
     private float previousYaw;
     private float previousPitch;
     private float movementYaw;
-    private double cps;
     private long lastClickAt;
     private long holdStartAt;
-    private long lastSwingAt;
     private long blockReleaseAt;
     private boolean attackHeld;
     private boolean blocking;
@@ -78,6 +79,7 @@ public final class KillAuraModule extends Module {
 
     public KillAuraModule() {
         super("KillAura [INVDEV]", "Attacks nearby players, use mode Record for strict anticheats like Polar.", Category.COMBAT, Keyboard.KEY_NONE);
+        leftClickCounterField = findMinecraftField("field_71429_W", "leftClickCounter");
         minCps.setVisibility(new java.util.function.BooleanSupplier() {
             @Override
             public boolean getAsBoolean() {
@@ -90,17 +92,10 @@ public final class KillAuraModule extends Module {
                 return clickMode.getValue() != ClickMode.RECORD;
             }
         });
-        legitAttack.setVisibility(new java.util.function.BooleanSupplier() {
-            @Override
-            public boolean getAsBoolean() {
-                return clickMode.getValue() != ClickMode.RECORD;
-            }
-        });
         addSetting(lookRange);
         addSetting(reach);
         addSetting(minCps);
         addSetting(maxCps);
-        addSetting(legitAttack);
         addSetting(clickMode);
         addSetting(weaponOnly);
         addSetting(fixMovement);
@@ -150,7 +145,28 @@ public final class KillAuraModule extends Module {
         desiredPitch = rotations[1];
         updateRotationState(minecraft);
         handleBlock(minecraft);
-        handleAttack(minecraft);
+        if (clickMode.getValue() != ClickMode.RECORD) {
+            handleAttack(minecraft);
+        }
+    }
+
+    @Override
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (clickMode.getValue() != ClickMode.RECORD) {
+            return;
+        }
+
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.thePlayer == null || minecraft.theWorld == null || target == null) {
+            return;
+        }
+
+        if (minecraft.currentScreen != null || !minecraft.inGameHasFocus) {
+            return;
+        }
+
+        removeClickDelay(minecraft);
+        handleRecordAttack(minecraft, System.currentTimeMillis());
     }
 
     @Override
@@ -200,42 +216,20 @@ public final class KillAuraModule extends Module {
 
     private void handleAttack(Minecraft minecraft) {
         long now = System.currentTimeMillis();
-        if (clickMode.getValue() == ClickMode.RECORD) {
-            handleRecordAttack(minecraft, now);
-            return;
-        }
-
-        if (legitAttack.isEnabled()) {
-            if (now - lastClickAt > speedSeconds * 1000.0D) {
-                lastClickAt = now;
-                if (holdStartAt < lastClickAt) {
-                    holdStartAt = lastClickAt;
-                }
-                performLegitAttack(minecraft);
-                attackHeld = true;
-                stopClicker = false;
-                updateVals();
-            } else if (attackHeld && now - holdStartAt > holdLengthSeconds * 1000.0D) {
-                sendAttackKey(minecraft, false);
-                attackHeld = false;
-                updateVals();
+        if (now - lastClickAt > speedSeconds * 1000.0D) {
+            lastClickAt = now;
+            if (holdStartAt < lastClickAt) {
+                holdStartAt = lastClickAt;
             }
-            return;
+            performLegitAttack(minecraft);
+            attackHeld = true;
+            stopClicker = false;
+            updateVals();
+        } else if (attackHeld && now - holdStartAt > holdLengthSeconds * 1000.0D) {
+            sendAttackKey(minecraft, false);
+            attackHeld = false;
+            updateVals();
         }
-
-        syncClicker();
-        if (!canAttackTarget(minecraft, target)) {
-            return;
-        }
-
-        long attackDelay = Math.max(1L, Math.round(1000.0D / Math.max(1.0D, cps)));
-        if (now - lastSwingAt < attackDelay) {
-            return;
-        }
-
-        minecraft.thePlayer.swingItem();
-        minecraft.playerController.attackEntity(minecraft.thePlayer, target);
-        lastSwingAt = now;
     }
 
     private void handleRecordAttack(Minecraft minecraft, long now) {
@@ -252,17 +246,16 @@ public final class KillAuraModule extends Module {
             recordNextClickTime = now;
         }
 
+        if (attackHeld) {
+            sendAttackKey(minecraft, false);
+            attackHeld = false;
+        }
+
         if (now < recordNextClickTime) {
             return;
         }
 
-        if (legitAttack.isEnabled()) {
-            performLegitAttack(minecraft);
-            sendAttackKey(minecraft, false);
-        } else if (canAttackTarget(minecraft, target)) {
-            minecraft.thePlayer.swingItem();
-            minecraft.playerController.attackEntity(minecraft.thePlayer, target);
-        }
+        performRecordedAttack(minecraft);
 
         recordIndex++;
         if (recordIndex >= delays.size()) {
@@ -543,6 +536,15 @@ public final class KillAuraModule extends Module {
         }
     }
 
+    private void performRecordedAttack(Minecraft minecraft) {
+        sendRecordedClick(minecraft, true);
+        if (target != null && canAttackTarget(minecraft, target)) {
+            minecraft.thePlayer.swingItem();
+            minecraft.playerController.attackEntity(minecraft.thePlayer, target);
+        }
+        sendRecordedClick(minecraft, false);
+    }
+
     private void performLegitAttack(Minecraft minecraft) {
         sendAttackKey(minecraft, true);
         if (target == null || !canAttackTarget(minecraft, target)) {
@@ -701,6 +703,39 @@ public final class KillAuraModule extends Module {
         }
     }
 
+    private void sendRecordedClick(Minecraft minecraft, boolean pressed) {
+        int keyCode = minecraft.gameSettings.keyBindAttack.getKeyCode();
+        KeyBinding.setKeyBindState(keyCode, pressed);
+        setMouseButtonState(0, pressed);
+        if (pressed) {
+            KeyBinding.onTick(keyCode);
+        }
+    }
+
+    private void setMouseButtonState(int mouseButton, boolean held) {
+        MouseEvent event = new MouseEvent();
+        ObfuscationReflectionHelper.setPrivateValue(MouseEvent.class, event, Integer.valueOf(mouseButton), "button");
+        ObfuscationReflectionHelper.setPrivateValue(MouseEvent.class, event, Boolean.valueOf(held), "buttonstate");
+        MinecraftForge.EVENT_BUS.post(event);
+
+        ByteBuffer buttons = ObfuscationReflectionHelper.getPrivateValue(Mouse.class, null, "buttons");
+        if (buttons != null && buttons.capacity() > mouseButton) {
+            buttons.put(mouseButton, (byte) (held ? 1 : 0));
+            ObfuscationReflectionHelper.setPrivateValue(Mouse.class, null, buttons, "buttons");
+        }
+    }
+
+    private void removeClickDelay(Minecraft minecraft) {
+        if (leftClickCounterField == null || !minecraft.inGameHasFocus || minecraft.thePlayer.capabilities.isCreativeMode) {
+            return;
+        }
+
+        try {
+            leftClickCounterField.setInt(minecraft, 0);
+        } catch (IllegalAccessException ignored) {
+        }
+    }
+
     private void updateVals() {
         stopClicker = false;
         double min = minCps.getValue();
@@ -711,16 +746,6 @@ public final class KillAuraModule extends Module {
 
         speedSeconds = 1.0D / ThreadLocalRandom.current().nextDouble(Math.max(1.0D, min - 0.2D), max);
         holdLengthSeconds = speedSeconds / ThreadLocalRandom.current().nextDouble(min, max);
-    }
-
-    private void syncClicker() {
-        double min = minCps.getValue();
-        double max = Math.max(min, maxCps.getValue());
-        if (min == max) {
-            cps = min;
-            return;
-        }
-        cps = min + (random.nextDouble() * (max - min));
     }
 
     private void clearTargetState() {
@@ -750,10 +775,8 @@ public final class KillAuraModule extends Module {
         previousYaw = 0.0F;
         previousPitch = 0.0F;
         movementYaw = 0.0F;
-        cps = 0.0D;
         lastClickAt = 0L;
         holdStartAt = 0L;
-        lastSwingAt = 0L;
         blockReleaseAt = 0L;
         speedSeconds = 0.0D;
         holdLengthSeconds = 0.0D;
@@ -774,6 +797,16 @@ public final class KillAuraModule extends Module {
     private static java.lang.reflect.Field findC03Field(String... names) {
         try {
             java.lang.reflect.Field field = ReflectionHelper.findField(C03PacketPlayer.class, names);
+            field.setAccessible(true);
+            return field;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static java.lang.reflect.Field findMinecraftField(String... names) {
+        try {
+            java.lang.reflect.Field field = ReflectionHelper.findField(Minecraft.class, names);
             field.setAccessible(true);
             return field;
         } catch (Exception ignored) {
