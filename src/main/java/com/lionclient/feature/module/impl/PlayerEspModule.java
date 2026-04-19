@@ -2,6 +2,7 @@ package com.lionclient.feature.module.impl;
 
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
+import com.lionclient.feature.setting.EnumSetting;
 import com.lionclient.feature.setting.NumberSetting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
@@ -12,12 +13,32 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
 public final class PlayerEspModule extends Module {
+    private final EnumSetting<Mode> mode = new EnumSetting<Mode>("Mode", Mode.values(), Mode.MODERN);
     private final NumberSetting red = new NumberSetting("Red", 0, 255, 5, 255);
     private final NumberSetting green = new NumberSetting("Green", 0, 255, 5, 60);
     private final NumberSetting blue = new NumberSetting("Blue", 0, 255, 5, 60);
 
     public PlayerEspModule() {
         super("PlayerESP", "Draws a box around other players trough walls.", Category.RENDER, Keyboard.KEY_NONE);
+        red.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() == Mode.CLASSIC;
+            }
+        });
+        green.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() == Mode.CLASSIC;
+            }
+        });
+        blue.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() == Mode.CLASSIC;
+            }
+        });
+        addSetting(mode);
         addSetting(red);
         addSetting(green);
         addSetting(blue);
@@ -31,9 +52,7 @@ public final class PlayerEspModule extends Module {
         }
 
         float partialTicks = event.partialTicks;
-        float r = red.getValue() / 255.0F;
-        float g = green.getValue() / 255.0F;
-        float b = blue.getValue() / 255.0F;
+        boolean modern = mode.getValue() == Mode.MODERN;
 
         GL11.glPushMatrix();
         GlStateManager.disableTexture2D();
@@ -73,7 +92,11 @@ public final class PlayerEspModule extends Module {
                 bb.maxZ - player.posZ + z
             ).expand(0.05D, 0.1D, 0.05D);
 
-            drawOutlinedBox(renderBox, r, g, b, 1.0F);
+            float[] colors = modern ? getModernColor(player) : getClassicColor();
+            if (modern) {
+                drawFilledBox(renderBox, colors[0], colors[1], colors[2], 0.12F);
+            }
+            drawOutlinedBox(renderBox, colors[0], colors[1], colors[2], modern ? 0.95F : 1.0F);
         }
 
         GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
@@ -108,8 +131,64 @@ public final class PlayerEspModule extends Module {
         GL11.glEnd();
     }
 
+    private void drawFilledBox(AxisAlignedBB bb, float r, float g, float b, float a) {
+        GL11.glColor4f(r, g, b, a);
+        GL11.glBegin(GL11.GL_QUADS);
+
+        quad(bb.minX, bb.minY, bb.minZ, bb.maxX, bb.minY, bb.minZ, bb.maxX, bb.maxY, bb.minZ, bb.minX, bb.maxY, bb.minZ);
+        quad(bb.minX, bb.minY, bb.maxZ, bb.maxX, bb.minY, bb.maxZ, bb.maxX, bb.maxY, bb.maxZ, bb.minX, bb.maxY, bb.maxZ);
+        quad(bb.minX, bb.minY, bb.minZ, bb.minX, bb.minY, bb.maxZ, bb.minX, bb.maxY, bb.maxZ, bb.minX, bb.maxY, bb.minZ);
+        quad(bb.maxX, bb.minY, bb.minZ, bb.maxX, bb.minY, bb.maxZ, bb.maxX, bb.maxY, bb.maxZ, bb.maxX, bb.maxY, bb.minZ);
+        quad(bb.minX, bb.maxY, bb.minZ, bb.maxX, bb.maxY, bb.minZ, bb.maxX, bb.maxY, bb.maxZ, bb.minX, bb.maxY, bb.maxZ);
+        quad(bb.minX, bb.minY, bb.minZ, bb.maxX, bb.minY, bb.minZ, bb.maxX, bb.minY, bb.maxZ, bb.minX, bb.minY, bb.maxZ);
+
+        GL11.glEnd();
+    }
+
     private void vertex(double x1, double y1, double z1, double x2, double y2, double z2) {
         GL11.glVertex3d(x1, y1, z1);
         GL11.glVertex3d(x2, y2, z2);
+    }
+
+    private void quad(double x1, double y1, double z1, double x2, double y2, double z2, double x3, double y3, double z3, double x4, double y4, double z4) {
+        GL11.glVertex3d(x1, y1, z1);
+        GL11.glVertex3d(x2, y2, z2);
+        GL11.glVertex3d(x3, y3, z3);
+        GL11.glVertex3d(x4, y4, z4);
+    }
+
+    private float[] getClassicColor() {
+        return new float[] {
+            red.getValue() / 255.0F,
+            green.getValue() / 255.0F,
+            blue.getValue() / 255.0F
+        };
+    }
+
+    private float[] getModernColor(EntityPlayer player) {
+        double time = System.currentTimeMillis() / 340.0D;
+        float wave = (float) ((Math.sin(time + (player.getEntityId() * 0.35D)) + 1.0D) * 0.5D);
+        int color = ClickGuiModule.blendColor(ClickGuiModule.getLightAccentColor(), ClickGuiModule.getDarkAccentColor(), wave);
+        return new float[] {
+            ((color >>> 16) & 255) / 255.0F,
+            ((color >>> 8) & 255) / 255.0F,
+            (color & 255) / 255.0F
+        };
+    }
+
+    private enum Mode {
+        MODERN("Modern"),
+        CLASSIC("Classic");
+
+        private final String label;
+
+        Mode(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
     }
 }

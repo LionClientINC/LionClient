@@ -21,6 +21,18 @@ public final class DecimalSetting extends Setting {
         return value;
     }
 
+    public double getMin() {
+        return min;
+    }
+
+    public double getMax() {
+        return max;
+    }
+
+    public double getStep() {
+        return step;
+    }
+
     public void increment() {
         value = clamp(value + step);
         ConfigManager.saveActiveConfig();
@@ -32,8 +44,14 @@ public final class DecimalSetting extends Setting {
     }
 
     public void setValue(double value) {
+        setValue(value, true);
+    }
+
+    public void setValue(double value, boolean save) {
         this.value = clamp(value);
-        ConfigManager.saveActiveConfig();
+        if (save) {
+            ConfigManager.saveActiveConfig();
+        }
     }
 
     @Override

@@ -20,6 +20,18 @@ public final class NumberSetting extends Setting {
         return value;
     }
 
+    public int getMin() {
+        return min;
+    }
+
+    public int getMax() {
+        return max;
+    }
+
+    public int getStep() {
+        return step;
+    }
+
     public void increment() {
         value = clamp(value + step);
         ConfigManager.saveActiveConfig();
@@ -31,8 +43,14 @@ public final class NumberSetting extends Setting {
     }
 
     public void setValue(int value) {
+        setValue(value, true);
+    }
+
+    public void setValue(int value, boolean save) {
         this.value = clamp(value);
-        ConfigManager.saveActiveConfig();
+        if (save) {
+            ConfigManager.saveActiveConfig();
+        }
     }
 
     @Override

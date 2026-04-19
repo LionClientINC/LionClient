@@ -1,9 +1,11 @@
 package com.lionclient;
 
 import com.lionclient.feature.module.ModuleManager;
+import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.HudModule;
 import com.lionclient.gui.ClickGuiScreen;
 import com.lionclient.gui.HudEditorScreen;
+import com.lionclient.gui.ModernClickGuiScreen;
 import com.lionclient.input.KeybindHandler;
 import com.lionclient.network.PacketDelayManager;
 import net.minecraft.client.Minecraft;
@@ -28,6 +30,7 @@ public final class LionClient {
     private final ModuleManager moduleManager = new ModuleManager();
     private final PacketDelayManager packetDelayManager = new PacketDelayManager(moduleManager);
     private final ClickGuiScreen clickGuiScreen = new ClickGuiScreen(moduleManager);
+    private final ModernClickGuiScreen modernClickGuiScreen = new ModernClickGuiScreen(moduleManager);
 
     public static LionClient getInstance() {
         return instance;
@@ -77,10 +80,13 @@ public final class LionClient {
 
     public void toggleClickGui() {
         Minecraft minecraft = Minecraft.getMinecraft();
-        if (minecraft.currentScreen == null) {
-            minecraft.displayGuiScreen(clickGuiScreen);
-        } else if (minecraft.currentScreen == clickGuiScreen) {
+        if (minecraft.currentScreen == clickGuiScreen || minecraft.currentScreen == modernClickGuiScreen) {
             minecraft.displayGuiScreen(null);
+            return;
+        }
+
+        if (minecraft.currentScreen == null) {
+            minecraft.displayGuiScreen(ClickGuiModule.getGuiStyle() == ClickGuiModule.GuiStyle.CLASSIC ? clickGuiScreen : modernClickGuiScreen);
         }
     }
 

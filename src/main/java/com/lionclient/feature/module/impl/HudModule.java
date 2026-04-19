@@ -4,6 +4,7 @@ import com.lionclient.LionClient;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.ActionSetting;
+import com.lionclient.feature.setting.EnumSetting;
 import com.lionclient.feature.setting.NumberSetting;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,6 +20,7 @@ public final class HudModule extends Module {
     private static final int DEFAULT_Y = 4;
     private static HudModule instance;
 
+    private final EnumSetting<Mode> mode = new EnumSetting<Mode>("Mode", Mode.values(), Mode.MODERN);
     private final NumberSetting red = new NumberSetting("Red", 0, 255, 5, 255);
     private final NumberSetting green = new NumberSetting("Green", 0, 255, 5, 255);
     private final NumberSetting blue = new NumberSetting("Blue", 0, 255, 5, 255);
@@ -42,6 +44,25 @@ public final class HudModule extends Module {
     public HudModule() {
         super("HUD", "Displays enabled modules on screen.", Category.RENDER, Keyboard.KEY_NONE);
         instance = this;
+        red.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() == Mode.CLASSIC;
+            }
+        });
+        green.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() == Mode.CLASSIC;
+            }
+        });
+        blue.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return mode.getValue() == Mode.CLASSIC;
+            }
+        });
+        addSetting(mode);
         addSetting(red);
         addSetting(green);
         addSetting(blue);
@@ -105,10 +126,12 @@ public final class HudModule extends Module {
         int anchorY = Math.max(0, Math.min(y.getValue(), Math.max(0, resolution.getScaledHeight() - minecraft.fontRendererObj.FONT_HEIGHT)));
         boolean rightAligned = anchorX >= resolution.getScaledWidth() / 2;
         int lineY = anchorY;
+        boolean modern = mode.getValue() == Mode.MODERN;
 
-        for (String moduleName : moduleNames) {
+        for (int i = 0; i < moduleNames.size(); i++) {
+            String moduleName = moduleNames.get(i);
             int drawX = rightAligned ? anchorX - minecraft.fontRendererObj.getStringWidth(moduleName) : anchorX;
-            minecraft.fontRendererObj.drawStringWithShadow(moduleName, drawX, lineY, color);
+            minecraft.fontRendererObj.drawStringWithShadow(moduleName, drawX, lineY, modern ? getModernColor(i) : color);
             lineY += minecraft.fontRendererObj.FONT_HEIGHT + 2;
         }
     }
@@ -162,5 +185,27 @@ public final class HudModule extends Module {
 
     private int getColor() {
         return 0xFF000000 | ((red.getValue() & 255) << 16) | ((green.getValue() & 255) << 8) | (blue.getValue() & 255);
+    }
+
+    private int getModernColor(int index) {
+        double time = System.currentTimeMillis() / 320.0D;
+        float wave = (float) ((Math.sin(time + (index * 0.45D)) + 1.0D) * 0.5D);
+        return 0xFF000000 | ClickGuiModule.blendColor(ClickGuiModule.getLightAccentColor(), ClickGuiModule.getDarkAccentColor(), wave);
+    }
+
+    private enum Mode {
+        MODERN("Modern"),
+        CLASSIC("Classic");
+
+        private final String label;
+
+        Mode(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
     }
 }
