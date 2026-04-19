@@ -1,8 +1,8 @@
 # LionClient
 
-Community-focused custom client with a custom base, dual ClickGUI styles, and a focused module set.
+Community-focused utility client with a custom base, and a focused module set.
 
-> LionClient was built partially with AI assistance and uses examples from certain versions of Raven.
+> LionClient was built partially with AI assistance and uses examples from certain versions of Raven. (No code of Blowsy or raven b4 has been used)
 
 ## Highlights
 
