@@ -6,9 +6,7 @@ import com.lionclient.feature.module.impl.AntiBotModule;
 import com.lionclient.feature.module.impl.BedPlatesModule;
 import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
-import com.lionclient.feature.module.impl.ClutchModule;
 import com.lionclient.feature.module.impl.ConfigModule;
-import com.lionclient.feature.module.impl.FakeLagModule;
 import com.lionclient.feature.module.impl.HudModule;
 import com.lionclient.feature.module.impl.KillAuraModule;
 import com.lionclient.feature.module.impl.KnockbackDelayModule;
@@ -42,7 +40,6 @@ public final class ModuleManager {
         }
 
         register(new SprintModule());
-        register(new ClutchModule());
         register(new BedPlatesModule());
         register(new LegitScaffoldModule());
         register(new AutoClickerModule());
@@ -50,7 +47,6 @@ public final class ModuleManager {
         register(new ReachModule());
         register(new AntiBotModule());
         register(new KillAuraModule());
-        register(new FakeLagModule());
         register(new KnockbackDelayModule());
         register(new ClickRecorderModule());
         register(new ClickGuiModule());
