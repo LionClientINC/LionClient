@@ -1,5 +1,6 @@
 package com.lionclient.feature.module.impl;
 
+import com.lionclient.LionClient;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.BooleanSetting;
@@ -29,7 +30,7 @@ public final class KnockbackDelayModule extends Module {
     private float lastHealth = -1.0F;
 
     public KnockbackDelayModule() {
-        super("KnockbackDelay [INVDEV]", "Delays all packets for a set period after knockback.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("KnockbackDelay", "Delays all packets for a set period after knockback.", Category.COMBAT, Keyboard.KEY_NONE);
         addSetting(delay);
         addSetting(renderIndicator);
     }
@@ -59,6 +60,11 @@ public final class KnockbackDelayModule extends Module {
         }
         lastHurtTime = minecraft.thePlayer.hurtTime;
         lastHealth = minecraft.thePlayer.getHealth();
+
+        LionClient client = LionClient.getInstance();
+        if (client != null) {
+            client.getPacketDelayManager().releaseExpiredInboundPackets(delay.getValue());
+        }
 
         if (getRemainingDelayMillis() <= 0) {
             delayEndAt = 0L;

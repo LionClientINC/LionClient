@@ -37,6 +37,10 @@ public final class LionClient {
         return moduleManager;
     }
 
+    public PacketDelayManager getPacketDelayManager() {
+        return packetDelayManager;
+    }
+
     @EventHandler
     public void onPreInit(FMLPreInitializationEvent event) {
         instance = this;
