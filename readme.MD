@@ -8,7 +8,7 @@ Community-focused utility client with a custom base, and a focused module set.
 
 - 15 built-in modules across combat, movement, client, and render
 - Two distinct ClickGUI styles: Classic dropdown and Modern panel
-- Record mode support through `ClickRecorder`
+- Undetectable autoclicker support through `ClickRecorder`
 - Built-in hover descriptions and suggestions for modules
 
 ## Quick Start
