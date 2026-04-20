@@ -37,8 +37,18 @@ public final class ModernClickGuiScreen extends GuiScreen {
     private static final int SETTING_ROW_GAP = 6;
     private static final int DEFAULT_SNOWFLAKE_COUNT = 110;
     private static final float WINDOW_RADIUS = 11.0F;
-    private static final float SLIDER_HINT_SCALE = 0.55F;
-    private static final int ENUM_OPTION_HEIGHT = 18;
+    private static final int ENUM_OPTION_HEIGHT = 20;
+    private static final int CONTROL_WIDTH = 240;
+    private static final int CONTROL_HEIGHT = 28;
+    private static final int CONTROL_PADDING = 12;
+    private static final int SLIDER_TRACK_HEIGHT = 6;
+    private static final int CHECKBOX_SIZE = 14;
+    private static final int SWITCH_WIDTH = 28;
+    private static final int SWITCH_HEIGHT = 16;
+    private static final int BIND_BUTTON_WIDTH = 100;
+    private static final int CATEGORY_MODULE_SLIDE_DISTANCE = 24;
+    private static final int CATEGORY_SETTINGS_SLIDE_DISTANCE = 34;
+    private static final float SMALL_LABEL_SCALE = 0.75F;
     private static final int SURFACE_WINDOW_BORDER = 0x394652;
     private static final int SURFACE_WINDOW = 0x1C252D;
     private static final int SURFACE_WINDOW_HEADER = 0x222C36;
@@ -53,6 +63,13 @@ public final class ModernClickGuiScreen extends GuiScreen {
     private static final int TEXT_MUTED = 0xFF7E8995;
     private static final int TEXT_DISABLED = 0xFF76818D;
     private static final int SNOWFLAKE_COLOR = 0xEEF2F5;
+    private static final int CONTROL_BACKGROUND = 0x1C1F27;
+    private static final int CONTROL_BORDER = 0x2A2D35;
+    private static final int CONTROL_BORDER_LIGHT = 0x3A3D45;
+    private static final int SWITCH_OFF_TRACK = 0x2A2D35;
+    private static final int SWITCH_OFF_THUMB = 0x8C9098;
+    private static final int SMALL_LABEL_COLOR = 0xFF8A919B;
+    private static final int CHECKBOX_LABEL_COLOR = 0xFFC8CDD4;
 
     private final ModuleManager moduleManager;
     private final Random random = new Random();
@@ -64,7 +81,9 @@ public final class ModernClickGuiScreen extends GuiScreen {
     private final Map<Setting, Float> sliderAnimations = new IdentityHashMap<Setting, Float>();
 
     private Category selectedCategory;
+    private Category previousCategory;
     private Module selectedModule;
+    private Module previousModule;
     private Module bindingModule;
     private EnumSetting<?> expandedEnumSetting;
     private Setting draggingSetting;
@@ -78,6 +97,10 @@ public final class ModernClickGuiScreen extends GuiScreen {
     private float moduleScrollTarget;
     private float settingsScroll;
     private float settingsScrollTarget;
+    private float previousModuleScroll;
+    private float previousSettingsScroll;
+    private float categoryTransitionProgress = 1.0F;
+    private int categoryTransitionDirection = 1;
     private long lastFrameTime;
 
     public ModernClickGuiScreen(ModuleManager moduleManager) {
@@ -99,6 +122,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
         expandedEnumSetting = null;
         draggingSetting = null;
         draggingWindow = false;
+        clearCategoryTransition();
         lastFrameTime = 0L;
         ensureSelection();
         initializeSnowflakes();
@@ -108,6 +132,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         float delta = getDeltaSeconds();
         openProgress = animate(openProgress, 1.0F, delta * 8.0F);
+        updateCategoryTransition(delta);
         updateSnowflakes(delta);
 
         if (draggingWindow) {
@@ -147,8 +172,17 @@ public final class ModernClickGuiScreen extends GuiScreen {
             return;
         }
 
-        if (handleCategoryClick(layout, mouseX, mouseY)
-            || handleModuleClick(layout, mouseX, mouseY, mouseButton)
+        if (handleCategoryClick(layout, mouseX, mouseY)) {
+            super.mouseClicked(mouseX, mouseY, mouseButton);
+            return;
+        }
+
+        if (isCategoryTransitionActive()) {
+            super.mouseClicked(mouseX, mouseY, mouseButton);
+            return;
+        }
+
+        if (handleModuleClick(layout, mouseX, mouseY, mouseButton)
             || handleHeaderToggleClick(layout, mouseX, mouseY, mouseButton)
             || handleSettingClick(layout, mouseX, mouseY, mouseButton)) {
             super.mouseClicked(mouseX, mouseY, mouseButton);
@@ -193,7 +227,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
     public void handleMouseInput() throws IOException {
         super.handleMouseInput();
         int wheel = Mouse.getEventDWheel();
-        if (wheel == 0) {
+        if (wheel == 0 || isCategoryTransitionActive()) {
             return;
         }
 
@@ -228,6 +262,14 @@ public final class ModernClickGuiScreen extends GuiScreen {
         for (Category category : Category.values()) {
             Bounds bounds = getCategoryBounds(layout, index);
             if (bounds.contains(mouseX, mouseY)) {
+                if (category == selectedCategory) {
+                    return true;
+                }
+
+                Category oldCategory = selectedCategory;
+                Module oldModule = selectedModule;
+                float oldModuleScroll = moduleScroll;
+                float oldSettingsScroll = settingsScroll;
                 selectedCategory = category;
                 selectedModule = null;
                 moduleScroll = 0.0F;
@@ -238,6 +280,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
                 bindingModule = null;
                 expandedEnumSetting = null;
                 ensureSelection();
+                beginCategoryTransition(oldCategory, oldModule, oldModuleScroll, oldSettingsScroll, category);
                 return true;
             }
             index++;
@@ -333,6 +376,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
         }
 
         if (!selectedModule.showsKeybindSetting()) {
+            expandedEnumSetting = null;
             return false;
         }
 
@@ -415,35 +459,17 @@ public final class ModernClickGuiScreen extends GuiScreen {
         moduleScrollTarget = clamp(moduleScrollTarget, 0.0F, maxScroll);
         moduleScroll = animate(moduleScroll, moduleScrollTarget, delta * 14.0F);
 
-        if (modules.isEmpty()) {
-            drawCenteredString(this.fontRendererObj, "No modules", layout.modulePaneX + (layout.modulePaneWidth / 2), layout.modulePaneY + 48, TEXT_SECONDARY);
-            return;
-        }
-
         beginScissor(layout.moduleScrollBounds);
-        int rowY = layout.moduleContentTop - Math.round(moduleScroll);
-        for (Module module : modules) {
-            Bounds rowBounds = new Bounds(layout.modulePaneX + 6, rowY, layout.modulePaneX + layout.modulePaneWidth - 6, rowY + MODULE_ROW_HEIGHT);
-            if (rowBounds.bottom >= layout.moduleScrollBounds.top && rowBounds.top <= layout.moduleScrollBounds.bottom) {
-                boolean hovered = rowBounds.contains(mouseX, mouseY) && layout.moduleScrollBounds.contains(mouseX, mouseY);
-                float selectionAnimation = getAnimation(moduleAnimations, module, hovered ? 0.45F : 0.0F, 13.0F);
-                float toggleAnimation = getAnimation(moduleToggleAnimations, module, module.isEnabled() ? 1.0F : 0.0F, 11.0F);
-                int baseRowColor = module.isEnabled()
-                    ? mixColor(SURFACE_ROW, accent, 0.22F + (toggleAnimation * 0.26F))
-                    : mixColor(SURFACE_ROW, SURFACE_PANEL_OUTLINE, hovered ? 0.30F : 0.08F);
-                int rowColor = withAlpha(baseRowColor, module.isEnabled() ? 205 + (int) (30.0F * selectionAnimation) : 172 + (int) (35.0F * selectionAnimation));
-                drawRoundedRect(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, rowColor);
-                int outlineColor = module.isEnabled()
-                    ? withAlpha(accent, 105 + (int) (60.0F * toggleAnimation))
-                    : withAlpha(SURFACE_PANEL_OUTLINE, hovered ? 140 : 96);
-                drawRoundedOutline(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, outlineColor);
-                int nameColor = module.isEnabled()
-                    ? mixColor(accent, TEXT_PRIMARY, 0.16F + (selectionAnimation * 0.18F))
-                    : mixColor(TEXT_DISABLED, TEXT_PRIMARY, selectionAnimation * 0.18F);
-                this.fontRendererObj.drawString(module.getName(), rowBounds.left + 10, rowBounds.top + 7, nameColor);
-
-            }
-            rowY += MODULE_ROW_HEIGHT + MODULE_ROW_GAP;
+        if (isCategoryTransitionActive()) {
+            float transition = easeOut(categoryTransitionProgress);
+            float outgoingProgress = clamp(transition / 0.42F, 0.0F, 1.0F);
+            float incomingProgress = clamp((transition - 0.18F) / 0.62F, 0.0F, 1.0F);
+            int previousOffset = Math.round(-categoryTransitionDirection * CATEGORY_MODULE_SLIDE_DISTANCE * outgoingProgress);
+            int currentOffset = Math.round(categoryTransitionDirection * CATEGORY_MODULE_SLIDE_DISTANCE * (1.0F - incomingProgress));
+            drawModuleList(layout, previousCategory, previousModuleScroll, mouseX, mouseY, accent, previousOffset, false, 1.0F - outgoingProgress);
+            drawModuleList(layout, selectedCategory, moduleScroll, mouseX, mouseY, accent, currentOffset, false, incomingProgress);
+        } else {
+            drawModuleList(layout, selectedCategory, moduleScroll, mouseX, mouseY, accent, 0, true, 1.0F);
         }
         endScissor();
     }
@@ -452,69 +478,152 @@ public final class ModernClickGuiScreen extends GuiScreen {
         drawRoundedRect(layout.settingsPaneX, layout.settingsPaneY, layout.settingsPaneRight, layout.settingsPaneBottom, 8.0F, withAlpha(SURFACE_PANEL, 210));
         drawRoundedOutline(layout.settingsPaneX, layout.settingsPaneY, layout.settingsPaneRight, layout.settingsPaneBottom, 8.0F, withAlpha(SURFACE_PANEL_OUTLINE, 125));
 
-        if (selectedModule == null) {
-            drawEmptySettingsState(layout);
+        if (selectedModule != null) {
+            List<Setting> visibleSettings = getVisibleSettings(selectedModule);
+            float contentHeight = 0.0F;
+            for (Setting setting : visibleSettings) {
+                contentHeight += getSettingHeight(setting) + SETTING_ROW_GAP;
+            }
+            if (selectedModule.showsKeybindSetting()) {
+                contentHeight += 46 + SETTING_ROW_GAP;
+            }
+
+            float maxScroll = Math.max(0.0F, contentHeight - layout.settingsScrollBounds.getHeight());
+            settingsScrollTarget = clamp(settingsScrollTarget, 0.0F, maxScroll);
+            settingsScroll = animate(settingsScroll, settingsScrollTarget, delta * 14.0F);
+        } else {
+            settingsScrollTarget = 0.0F;
+            settingsScroll = animate(settingsScroll, 0.0F, delta * 14.0F);
+        }
+
+        if (isCategoryTransitionActive()) {
+            float transition = easeOut(categoryTransitionProgress);
+            float outgoingProgress = clamp(transition / 0.42F, 0.0F, 1.0F);
+            float incomingProgress = clamp((transition - 0.18F) / 0.62F, 0.0F, 1.0F);
+            int previousOffset = Math.round(-categoryTransitionDirection * CATEGORY_SETTINGS_SLIDE_DISTANCE * outgoingProgress);
+            int currentOffset = Math.round(categoryTransitionDirection * CATEGORY_SETTINGS_SLIDE_DISTANCE * (1.0F - incomingProgress));
+            drawSettingsPaneContent(layout, previousModule, mouseX, mouseY, accent, previousSettingsScroll, previousOffset, false, 1.0F - outgoingProgress);
+            drawSettingsPaneContent(layout, selectedModule, mouseX, mouseY, accent, settingsScroll, currentOffset, false, incomingProgress);
             return;
         }
 
-        this.fontRendererObj.drawStringWithShadow(selectedModule.getName(), layout.settingsPaneX + 16, layout.settingsPaneY + 10, TEXT_PRIMARY);
-        this.fontRendererObj.drawString(selectedModule.getDescription(), layout.settingsPaneX + 16, layout.settingsPaneY + 22, TEXT_SECONDARY);
-        drawHeaderToggle(getHeaderToggleBounds(layout), selectedModule.isEnabled(), accent);
+        drawSettingsPaneContent(layout, selectedModule, mouseX, mouseY, accent, settingsScroll, 0, true, 1.0F);
+    }
 
-        List<Setting> visibleSettings = getVisibleSettings(selectedModule);
-        float contentHeight = 0.0F;
-        for (Setting setting : visibleSettings) {
-            contentHeight += getSettingHeight(setting) + SETTING_ROW_GAP;
+    private void drawEmptySettingsState(Layout layout) {
+        drawEmptySettingsState(layout, 1.0F);
+    }
+
+    private void drawEmptySettingsState(Layout layout, float alphaScale) {
+        this.fontRendererObj.drawStringWithShadow("Select a module", layout.settingsPaneX + 16, layout.settingsPaneY + 18, scaleAlpha(TEXT_PRIMARY, alphaScale));
+        this.fontRendererObj.drawString("Pick something on the left to edit its settings.", layout.settingsPaneX + 16, layout.settingsPaneY + 32, scaleAlpha(TEXT_SECONDARY, alphaScale));
+    }
+
+    private void drawModuleList(Layout layout, Category category, float scroll, int mouseX, int mouseY, int accent, int xOffset, boolean interactive, float alphaScale) {
+        if (category == null || alphaScale <= 0.01F) {
+            return;
         }
-        if (selectedModule.showsKeybindSetting()) {
-            contentHeight += 38 + SETTING_ROW_GAP;
+
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(xOffset, 0.0F, 0.0F);
+
+        List<Module> modules = moduleManager.getModules(category);
+        if (modules.isEmpty()) {
+            drawCenteredString(this.fontRendererObj, "No modules", layout.modulePaneX + (layout.modulePaneWidth / 2), layout.modulePaneY + 48, scaleAlpha(TEXT_SECONDARY, alphaScale));
+            GlStateManager.popMatrix();
+            return;
         }
 
-        float maxScroll = Math.max(0.0F, contentHeight - layout.settingsScrollBounds.getHeight());
-        settingsScrollTarget = clamp(settingsScrollTarget, 0.0F, maxScroll);
-        settingsScroll = animate(settingsScroll, settingsScrollTarget, delta * 14.0F);
+        int rowY = layout.moduleContentTop - Math.round(scroll);
+        for (Module module : modules) {
+            Bounds rowBounds = new Bounds(layout.modulePaneX + 6, rowY, layout.modulePaneX + layout.modulePaneWidth - 6, rowY + MODULE_ROW_HEIGHT);
+            if (rowBounds.bottom >= layout.moduleScrollBounds.top && rowBounds.top <= layout.moduleScrollBounds.bottom) {
+                boolean hovered = interactive && rowBounds.contains(mouseX, mouseY) && layout.moduleScrollBounds.contains(mouseX, mouseY);
+                float selectionAnimation = getAnimation(moduleAnimations, module, hovered ? 0.45F : 0.0F, 13.0F);
+                float toggleAnimation = getAnimation(moduleToggleAnimations, module, module.isEnabled() ? 1.0F : 0.0F, 11.0F);
+                int baseRowColor = module.isEnabled()
+                    ? mixColor(SURFACE_ROW, accent, 0.22F + (toggleAnimation * 0.26F))
+                    : mixColor(SURFACE_ROW, SURFACE_PANEL_OUTLINE, hovered ? 0.30F : 0.08F);
+                int rowColor = withAlpha(baseRowColor, module.isEnabled() ? 205 + (int) (30.0F * selectionAnimation) : 172 + (int) (35.0F * selectionAnimation));
+                drawRoundedRect(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, scaleAlpha(rowColor, alphaScale));
+                int outlineColor = module.isEnabled()
+                    ? withAlpha(accent, 105 + (int) (60.0F * toggleAnimation))
+                    : withAlpha(SURFACE_PANEL_OUTLINE, hovered ? 140 : 96);
+                drawRoundedOutline(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, scaleAlpha(outlineColor, alphaScale));
+                int nameColor = module.isEnabled()
+                    ? mixColor(accent, TEXT_PRIMARY, 0.16F + (selectionAnimation * 0.18F))
+                    : mixColor(TEXT_DISABLED, TEXT_PRIMARY, selectionAnimation * 0.18F);
+                this.fontRendererObj.drawString(module.getName(), rowBounds.left + 10, rowBounds.top + 7, scaleAlpha(nameColor, alphaScale));
+            }
+            rowY += MODULE_ROW_HEIGHT + MODULE_ROW_GAP;
+        }
 
+        GlStateManager.popMatrix();
+    }
+
+    private void drawSettingsPaneContent(Layout layout, Module module, int mouseX, int mouseY, int accent, float scroll, int xOffset, boolean interactive, float alphaScale) {
+        if (alphaScale <= 0.01F) {
+            return;
+        }
+
+        Bounds paneBounds = new Bounds(layout.settingsPaneX + 2, layout.settingsPaneY + 2, layout.settingsPaneRight - 2, layout.settingsPaneBottom - 2);
+
+        beginScissor(paneBounds);
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(xOffset, 0.0F, 0.0F);
+        if (module == null) {
+            drawEmptySettingsState(layout, alphaScale);
+            GlStateManager.popMatrix();
+            endScissor();
+            return;
+        }
+
+        this.fontRendererObj.drawStringWithShadow(module.getName(), layout.settingsPaneX + 16, layout.settingsPaneY + 10, scaleAlpha(TEXT_PRIMARY, alphaScale));
+        this.fontRendererObj.drawString(module.getDescription(), layout.settingsPaneX + 16, layout.settingsPaneY + 22, scaleAlpha(TEXT_SECONDARY, alphaScale));
+        float headerToggleProgress = getAnimation(moduleToggleAnimations, module, module.isEnabled() ? 1.0F : 0.0F, 14.0F);
+        drawHeaderToggle(getHeaderToggleBounds(layout), module.isEnabled(), headerToggleProgress, accent, alphaScale);
+        GlStateManager.popMatrix();
+        endScissor();
+
+        List<Setting> visibleSettings = getVisibleSettings(module);
         beginScissor(layout.settingsScrollBounds);
-        int rowY = layout.settingsContentTop - Math.round(settingsScroll);
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(xOffset, 0.0F, 0.0F);
+        int drawMouseX = interactive ? mouseX : Integer.MIN_VALUE;
+        int drawMouseY = interactive ? mouseY : Integer.MIN_VALUE;
+        int rowY = layout.settingsContentTop - Math.round(scroll);
         for (Setting setting : visibleSettings) {
             int rowHeight = getSettingHeight(setting);
             Bounds rowBounds = new Bounds(layout.settingsPaneX + 10, rowY, layout.settingsPaneRight - 10, rowY + rowHeight);
             if (rowBounds.bottom >= layout.settingsScrollBounds.top && rowBounds.top <= layout.settingsScrollBounds.bottom) {
-                drawSettingCard(rowBounds, setting, mouseX, mouseY, accent);
+                drawSettingCard(rowBounds, setting, drawMouseX, drawMouseY, accent, alphaScale);
             }
             rowY += rowHeight + SETTING_ROW_GAP;
         }
 
-        if (selectedModule.showsKeybindSetting()) {
-            Bounds rowBounds = new Bounds(layout.settingsPaneX + 10, rowY, layout.settingsPaneRight - 10, rowY + 38);
+        if (module.showsKeybindSetting()) {
+            Bounds rowBounds = new Bounds(layout.settingsPaneX + 10, rowY, layout.settingsPaneRight - 10, rowY + 46);
             if (rowBounds.bottom >= layout.settingsScrollBounds.top && rowBounds.top <= layout.settingsScrollBounds.bottom) {
-                drawKeybindCard(rowBounds, selectedModule, accent);
+                drawKeybindCard(rowBounds, module, accent, alphaScale);
             }
         }
-        drawExpandedEnumPopup(layout, visibleSettings, mouseX, mouseY, accent);
+        if (interactive) {
+            drawExpandedEnumPopup(layout, visibleSettings, mouseX, mouseY, accent);
+        }
+        GlStateManager.popMatrix();
         endScissor();
     }
 
-    private void drawEmptySettingsState(Layout layout) {
-        this.fontRendererObj.drawStringWithShadow("Select a module", layout.settingsPaneX + 16, layout.settingsPaneY + 18, TEXT_PRIMARY);
-        this.fontRendererObj.drawString("Pick something on the left to edit its settings.", layout.settingsPaneX + 16, layout.settingsPaneY + 32, TEXT_SECONDARY);
-    }
-
-    private void drawSettingCard(Bounds rowBounds, Setting setting, int mouseX, int mouseY, int accent) {
+    private void drawSettingCard(Bounds rowBounds, Setting setting, int mouseX, int mouseY, int accent, float alphaScale) {
         boolean hovered = rowBounds.contains(mouseX, mouseY);
-        drawRoundedRect(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, hovered ? withAlpha(mixColor(SURFACE_ROW, SURFACE_PANEL_OUTLINE, 0.18F), 216) : withAlpha(SURFACE_ROW, 198));
-        drawRoundedOutline(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, hovered ? withAlpha(accent, 120) : withAlpha(SURFACE_PANEL_OUTLINE, 110));
-        this.fontRendererObj.drawString(setting.getName(), rowBounds.left + 12, rowBounds.top + 10, TEXT_PRIMARY);
+        drawRoundedRect(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, scaleAlpha(hovered ? withAlpha(mixColor(SURFACE_ROW, SURFACE_PANEL_OUTLINE, 0.18F), 216) : withAlpha(SURFACE_ROW, 198), alphaScale));
+        drawRoundedOutline(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, scaleAlpha(hovered ? withAlpha(accent, 120) : withAlpha(SURFACE_PANEL_OUTLINE, 110), alphaScale));
 
         if (setting instanceof BooleanSetting) {
             float progress = getAnimation(booleanAnimations, setting, ((BooleanSetting) setting).isEnabled() ? 1.0F : 0.0F, 14.0F);
-            drawBooleanControl(getBooleanControlBounds(rowBounds), progress, hovered, accent);
-            this.fontRendererObj.drawString(
-                ((BooleanSetting) setting).isEnabled() ? "Enabled" : "Disabled",
-                rowBounds.left + 12,
-                rowBounds.top + 22,
-                ((BooleanSetting) setting).isEnabled() ? accent : TEXT_SECONDARY
-            );
+            drawBooleanControl(getBooleanControlBounds(rowBounds), progress, hovered, accent, alphaScale);
+            Bounds checkboxBounds = getBooleanControlBounds(rowBounds);
+            this.fontRendererObj.drawString(setting.getName(), checkboxBounds.right + 8, rowBounds.top + (rowBounds.getHeight() - this.fontRendererObj.FONT_HEIGHT) / 2, scaleAlpha(CHECKBOX_LABEL_COLOR, alphaScale));
             return;
         }
 
@@ -527,73 +636,110 @@ public final class ModernClickGuiScreen extends GuiScreen {
             float target = getSliderTarget(setting);
             float sliderProgress = getAnimation(sliderAnimations, setting, target, 14.0F);
             String valueText = setting.getValueText();
-            this.fontRendererObj.drawString(valueText, rowBounds.right - 12 - this.fontRendererObj.getStringWidth(valueText), rowBounds.top + 10, accent);
-            Gui.drawRect(sliderBounds.left, sliderBounds.top, sliderBounds.right, sliderBounds.bottom, 0xFF000000 | SURFACE_INPUT);
-            Gui.drawRect(sliderBounds.left, sliderBounds.top, sliderBounds.left + Math.round(sliderBounds.getWidth() * sliderProgress), sliderBounds.bottom, withAlpha(accent, 205));
-            int knobX = sliderBounds.left + Math.round((sliderBounds.getWidth() - 1) * sliderProgress);
-            Gui.drawRect(knobX - 2, sliderBounds.top - 2, knobX + 2, sliderBounds.bottom + 2, 0xFFF1F6FF);
-            drawScaledText("drag to adjust", rowBounds.left + 12, rowBounds.top + 20, TEXT_MUTED, SLIDER_HINT_SCALE);
+            this.fontRendererObj.drawString(setting.getName(), rowBounds.left + CONTROL_PADDING, rowBounds.top + 8, scaleAlpha(TEXT_PRIMARY, alphaScale));
+            this.fontRendererObj.drawString(valueText, rowBounds.right - CONTROL_PADDING - this.fontRendererObj.getStringWidth(valueText), rowBounds.top + 8, scaleAlpha(accent, alphaScale));
+            Gui.drawRect(sliderBounds.left, sliderBounds.top, sliderBounds.right, sliderBounds.bottom, scaleAlpha(0xFF000000 | CONTROL_BORDER, alphaScale));
+            Gui.drawRect(sliderBounds.left, sliderBounds.top, sliderBounds.left + Math.round(sliderBounds.getWidth() * sliderProgress), sliderBounds.bottom, scaleAlpha(withAlpha(accent, 205), alphaScale));
             return;
         }
 
         if (setting instanceof EnumSetting) {
             EnumSetting<?> enumSetting = (EnumSetting<?>) setting;
             Bounds chipBounds = getEnumChipBounds(rowBounds, enumSetting);
-            drawRoundedRect(chipBounds.left, chipBounds.top, chipBounds.right, chipBounds.bottom, 4.0F, withAlpha(SURFACE_CHIP, 212));
+            drawScaledText(setting.getName(), rowBounds.left + CONTROL_PADDING, rowBounds.top + 6, scaleAlpha(SMALL_LABEL_COLOR, alphaScale), SMALL_LABEL_SCALE);
+            Gui.drawRect(chipBounds.left, chipBounds.top, chipBounds.right, chipBounds.bottom, scaleAlpha(0xFF000000 | CONTROL_BACKGROUND, alphaScale));
             drawRoundedOutline(
                 chipBounds.left,
                 chipBounds.top,
                 chipBounds.right,
                 chipBounds.bottom,
                 4.0F,
-                expandedEnumSetting == setting ? withAlpha(accent, 180) : withAlpha(SURFACE_PANEL_OUTLINE, 128)
+                scaleAlpha(expandedEnumSetting == setting ? withAlpha(accent, 180) : 0xFF000000 | CONTROL_BORDER, alphaScale)
             );
-            this.fontRendererObj.drawString(enumSetting.getValueText(), chipBounds.left + 8, chipBounds.top + 6, TEXT_PRIMARY);
-            this.fontRendererObj.drawString("v", chipBounds.right - 11, chipBounds.top + 6, accent);
-            this.fontRendererObj.drawString("Click to choose", rowBounds.left + 12, rowBounds.top + 22, TEXT_SECONDARY);
+            this.fontRendererObj.drawString(enumSetting.getValueText(), chipBounds.left + 8, chipBounds.top + (chipBounds.getHeight() - this.fontRendererObj.FONT_HEIGHT) / 2, scaleAlpha(TEXT_PRIMARY, alphaScale));
+            this.fontRendererObj.drawString("≡", chipBounds.right - 12 - this.fontRendererObj.getStringWidth("≡"), chipBounds.top + (chipBounds.getHeight() - this.fontRendererObj.FONT_HEIGHT) / 2, TEXT_SECONDARY);
             return;
         }
 
         if (setting instanceof ActionSetting) {
             String valueText = setting.getValueText();
-            int chipWidth = Math.max(72, this.fontRendererObj.getStringWidth(valueText) + 26);
-            Bounds chipBounds = new Bounds(rowBounds.right - chipWidth - 12, rowBounds.top + 8, rowBounds.right - 12, rowBounds.bottom - 8);
-            drawRoundedRect(chipBounds.left, chipBounds.top, chipBounds.right, chipBounds.bottom, 4.0F, withAlpha(accent, 210));
-            drawRoundedOutline(chipBounds.left, chipBounds.top, chipBounds.right, chipBounds.bottom, 4.0F, withAlpha(accent, 220));
-            this.fontRendererObj.drawString(valueText, chipBounds.left + (chipBounds.getWidth() - this.fontRendererObj.getStringWidth(valueText)) / 2, chipBounds.top + 6, TEXT_PRIMARY);
-            this.fontRendererObj.drawString("Click to run", rowBounds.left + 12, rowBounds.top + 22, TEXT_SECONDARY);
+            drawScaledText(setting.getName(), rowBounds.left + CONTROL_PADDING, rowBounds.top + 6, scaleAlpha(SMALL_LABEL_COLOR, alphaScale), SMALL_LABEL_SCALE);
+            Bounds chipBounds = getActionButtonBounds(rowBounds, valueText);
+            Gui.drawRect(chipBounds.left, chipBounds.top, chipBounds.right, chipBounds.bottom, scaleAlpha(0xFF000000 | CONTROL_BACKGROUND, alphaScale));
+            drawRoundedOutline(chipBounds.left, chipBounds.top, chipBounds.right, chipBounds.bottom, 4.0F, scaleAlpha(0xFF000000 | CONTROL_BORDER_LIGHT, alphaScale));
+            this.fontRendererObj.drawString(valueText, chipBounds.left + (chipBounds.getWidth() - this.fontRendererObj.getStringWidth(valueText)) / 2, chipBounds.top + (chipBounds.getHeight() - this.fontRendererObj.FONT_HEIGHT) / 2, scaleAlpha(TEXT_PRIMARY, alphaScale));
             return;
         }
 
         String valueText = setting.getValueText();
-        this.fontRendererObj.drawString(valueText, rowBounds.right - 12 - this.fontRendererObj.getStringWidth(valueText), rowBounds.top + 10, accent);
+        this.fontRendererObj.drawString(setting.getName(), rowBounds.left + CONTROL_PADDING, rowBounds.top + 10, scaleAlpha(TEXT_PRIMARY, alphaScale));
+        this.fontRendererObj.drawString(valueText, rowBounds.right - CONTROL_PADDING - this.fontRendererObj.getStringWidth(valueText), rowBounds.top + 10, scaleAlpha(accent, alphaScale));
     }
 
-    private void drawKeybindCard(Bounds rowBounds, Module module, int accent) {
-        drawRoundedRect(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, withAlpha(SURFACE_ROW, 200));
-        drawRoundedOutline(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, withAlpha(SURFACE_PANEL_OUTLINE, 110));
-        this.fontRendererObj.drawString("Keybind", rowBounds.left + 12, rowBounds.top + 10, TEXT_PRIMARY);
-        String valueText = bindingModule == module ? "Press key..." : getKeybindText(module);
-        int chipWidth = Math.max(92, this.fontRendererObj.getStringWidth(valueText) + 24);
-        Bounds chipBounds = new Bounds(rowBounds.right - chipWidth - 12, rowBounds.top + 8, rowBounds.right - 12, rowBounds.bottom - 8);
-        int fill = bindingModule == module ? withAlpha(accent, 180) : withAlpha(SURFACE_CHIP, 178);
-        int outline = bindingModule == module ? withAlpha(accent, 235) : withAlpha(SURFACE_PANEL_OUTLINE, 132);
-        drawRoundedRect(chipBounds.left, chipBounds.top, chipBounds.right, chipBounds.bottom, 4.0F, fill);
-        drawRoundedOutline(chipBounds.left, chipBounds.top, chipBounds.right, chipBounds.bottom, 4.0F, outline);
-        this.fontRendererObj.drawString(valueText, chipBounds.left + (chipBounds.getWidth() - this.fontRendererObj.getStringWidth(valueText)) / 2, chipBounds.top + 6, TEXT_PRIMARY);
+    private void drawKeybindCard(Bounds rowBounds, Module module, int accent, float alphaScale) {
+        drawRoundedRect(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, scaleAlpha(withAlpha(SURFACE_ROW, 200), alphaScale));
+        drawRoundedOutline(rowBounds.left, rowBounds.top, rowBounds.right, rowBounds.bottom, 6.0F, scaleAlpha(withAlpha(SURFACE_PANEL_OUTLINE, 110), alphaScale));
+        drawScaledText("Keybind", rowBounds.left + CONTROL_PADDING, rowBounds.top + 6, scaleAlpha(SMALL_LABEL_COLOR, alphaScale), SMALL_LABEL_SCALE);
+        String valueText = bindingModule == module ? "Bind: ..." : "Bind: " + getKeybindText(module);
+        Bounds chipBounds = getBindButtonBounds(rowBounds, valueText);
+        Gui.drawRect(chipBounds.left, chipBounds.top, chipBounds.right, chipBounds.bottom, scaleAlpha(0xFF000000 | CONTROL_BACKGROUND, alphaScale));
+        drawRoundedOutline(
+            chipBounds.left,
+            chipBounds.top,
+            chipBounds.right,
+            chipBounds.bottom,
+            4.0F,
+            scaleAlpha(bindingModule == module ? withAlpha(accent, 220) : 0xFF000000 | CONTROL_BORDER_LIGHT, alphaScale)
+        );
+        this.fontRendererObj.drawString(valueText, chipBounds.left + 8, chipBounds.top + (chipBounds.getHeight() - this.fontRendererObj.FONT_HEIGHT) / 2, scaleAlpha(TEXT_PRIMARY, alphaScale));
     }
 
-    private void drawBooleanControl(Bounds bounds, float progress, boolean hovered, int accent) {
-        int fill = mixColor(hovered ? SURFACE_CHIP : SURFACE_INPUT, accent, progress);
-        Gui.drawRect(bounds.left, bounds.top, bounds.right, bounds.bottom, 0xFF000000 | fill);
-        drawOutline(bounds.left, bounds.top, bounds.right, bounds.bottom, progress > 0.02F ? withAlpha(accent, 220) : withAlpha(SURFACE_PANEL_OUTLINE, hovered ? 145 : 110));
+    private void drawBooleanControl(Bounds bounds, float progress, boolean hovered, int accent, float alphaScale) {
+        int fill = 0xFF000000 | mixColor(CONTROL_BACKGROUND, accent, progress);
+        Gui.drawRect(bounds.left, bounds.top, bounds.right, bounds.bottom, scaleAlpha(fill, alphaScale));
+        drawOutline(bounds.left, bounds.top, bounds.right, bounds.bottom, scaleAlpha(0xFF000000 | CONTROL_BORDER_LIGHT, alphaScale));
+        if (progress > 0.02F) {
+            drawCheckboxCheck(bounds, 0xFFFFFFFF, progress, alphaScale);
+        }
     }
 
-    private void drawHeaderToggle(Bounds bounds, boolean enabled, int accent) {
-        drawRoundedRect(bounds.left, bounds.top, bounds.right, bounds.bottom, 4.5F, enabled ? withAlpha(accent, 165) : withAlpha(SURFACE_CHIP, 170));
-        drawRoundedOutline(bounds.left, bounds.top, bounds.right, bounds.bottom, 4.5F, enabled ? withAlpha(accent, 235) : withAlpha(SURFACE_PANEL_OUTLINE, 132));
+    private void drawCheckboxCheck(Bounds bounds, int color, float progress, float alphaScale) {
+        int left = bounds.left + 3;
+        int top = bounds.top + 3;
+        int animatedColor = scaleAlpha(withAlpha(color, Math.max(32, Math.round(255.0F * progress))), alphaScale);
+
+        if (progress >= 0.15F) {
+            Gui.drawRect(left, top + 4, left + 2, top + 6, animatedColor);
+        }
+        if (progress >= 0.32F) {
+            Gui.drawRect(left + 2, top + 6, left + 4, top + 8, animatedColor);
+        }
+        if (progress >= 0.5F) {
+            Gui.drawRect(left + 4, top + 4, left + 6, top + 6, animatedColor);
+        }
+        if (progress >= 0.68F) {
+            Gui.drawRect(left + 6, top + 2, left + 8, top + 4, animatedColor);
+        }
+        if (progress >= 0.84F) {
+            Gui.drawRect(left + 8, top, left + 10, top + 2, animatedColor);
+        }
+    }
+
+    private void drawHeaderToggle(Bounds bounds, boolean enabled, float progress, int accent, float alphaScale) {
         String label = enabled ? "Enabled" : "Disabled";
-        this.fontRendererObj.drawString(label, bounds.left + (bounds.getWidth() - this.fontRendererObj.getStringWidth(label)) / 2, bounds.top + 7, TEXT_PRIMARY);
+        int trackTop = bounds.top + (bounds.getHeight() - SWITCH_HEIGHT) / 2;
+        int trackRight = bounds.left + SWITCH_WIDTH;
+        int trackColor = 0xFF000000 | mixColor(SWITCH_OFF_TRACK, accent, progress);
+        Gui.drawRect(bounds.left, trackTop, trackRight, trackTop + SWITCH_HEIGHT, scaleAlpha(trackColor, alphaScale));
+        drawOutline(bounds.left, trackTop, trackRight, trackTop + SWITCH_HEIGHT, scaleAlpha(0xFF000000 | mixColor(CONTROL_BORDER, accent, progress * 0.7F), alphaScale));
+
+        int thumbSize = Math.max(4, SWITCH_HEIGHT - 2);
+        int thumbTravel = Math.max(0, SWITCH_WIDTH - thumbSize - 2);
+        int thumbLeft = bounds.left + 1 + Math.round(thumbTravel * progress);
+        int thumbColor = 0xFF000000 | mixColor(SWITCH_OFF_THUMB, 0xF5F8FF, progress);
+        Gui.drawRect(thumbLeft, trackTop + 1, thumbLeft + thumbSize, trackTop + 1 + thumbSize, scaleAlpha(thumbColor, alphaScale));
+
+        this.fontRendererObj.drawString(label, trackRight + 8, bounds.top + (bounds.getHeight() - this.fontRendererObj.FONT_HEIGHT) / 2, scaleAlpha(TEXT_SECONDARY, alphaScale));
     }
 
     private void refreshClickGuiStyleIfNeeded(Setting setting) {
@@ -656,8 +802,8 @@ public final class ModernClickGuiScreen extends GuiScreen {
             if (setting == expandedEnumSetting && setting instanceof EnumSetting) {
                 EnumSetting<?> enumSetting = (EnumSetting<?>) setting;
                 Bounds popupBounds = getEnumPopupBounds(layout, getEnumChipBounds(rowBounds, enumSetting), enumSetting);
-                drawRoundedRect(popupBounds.left, popupBounds.top, popupBounds.right, popupBounds.bottom, 4.0F, withAlpha(SURFACE_CHIP, 230));
-                drawRoundedOutline(popupBounds.left, popupBounds.top, popupBounds.right, popupBounds.bottom, 4.0F, withAlpha(accent, 170));
+                Gui.drawRect(popupBounds.left, popupBounds.top, popupBounds.right, popupBounds.bottom, 0xFF000000 | CONTROL_BACKGROUND);
+                drawRoundedOutline(popupBounds.left, popupBounds.top, popupBounds.right, popupBounds.bottom, 4.0F, 0xFF000000 | CONTROL_BORDER);
 
                 Object[] values = enumSetting.getValues();
                 for (int i = 0; i < values.length; i++) {
@@ -668,7 +814,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
                     if ((fill >>> 24) != 0) {
                         Gui.drawRect(optionBounds.left, optionBounds.top, optionBounds.right, optionBounds.bottom, fill);
                     }
-                    this.fontRendererObj.drawString(values[i].toString(), optionBounds.left + 8, optionBounds.top + 5, selected ? TEXT_PRIMARY : hovered ? TEXT_PRIMARY : TEXT_SECONDARY);
+                    this.fontRendererObj.drawString(values[i].toString(), optionBounds.left + 8, optionBounds.top + (optionBounds.getHeight() - this.fontRendererObj.FONT_HEIGHT) / 2, selected ? TEXT_PRIMARY : hovered ? TEXT_PRIMARY : TEXT_SECONDARY);
                 }
                 return;
             }
@@ -753,8 +899,11 @@ public final class ModernClickGuiScreen extends GuiScreen {
     }
 
     private int getSettingHeight(Setting setting) {
+        if (setting instanceof EnumSetting || setting instanceof ActionSetting) {
+            return 44;
+        }
         if (setting instanceof NumberSetting || setting instanceof DecimalSetting) {
-            return 40;
+            return 44;
         }
         return 34;
     }
@@ -856,7 +1005,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
     }
 
     private Bounds getHeaderToggleBounds(Layout layout) {
-        return new Bounds(layout.settingsPaneRight - 102, layout.settingsPaneY + 12, layout.settingsPaneRight - 14, layout.settingsPaneY + 30);
+        return new Bounds(layout.settingsPaneRight - 102, layout.settingsPaneY + 34, layout.settingsPaneRight - 14, layout.settingsPaneY + 58);
     }
 
     private Bounds getDragBounds(Layout layout) {
@@ -864,18 +1013,14 @@ public final class ModernClickGuiScreen extends GuiScreen {
     }
 
     private Bounds getBooleanControlBounds(Bounds rowBounds) {
-        return new Bounds(rowBounds.right - 30, rowBounds.top + 8, rowBounds.right - 12, rowBounds.top + 26);
+        int top = rowBounds.top + (rowBounds.getHeight() - CHECKBOX_SIZE) / 2;
+        return new Bounds(rowBounds.left + CONTROL_PADDING, top, rowBounds.left + CONTROL_PADDING + CHECKBOX_SIZE, top + CHECKBOX_SIZE);
     }
 
     private Bounds getEnumChipBounds(Bounds rowBounds, EnumSetting<?> setting) {
-        int widestLabel = 0;
-        Object[] values = setting.getValues();
-        for (Object value : values) {
-            widestLabel = Math.max(widestLabel, this.fontRendererObj.getStringWidth(value.toString()));
-        }
-
-        int chipWidth = Math.max(84, widestLabel + 28);
-        return new Bounds(rowBounds.right - chipWidth - 12, rowBounds.top + 8, rowBounds.right - 12, rowBounds.bottom - 8);
+        int chipWidth = Math.min(CONTROL_WIDTH, rowBounds.getWidth() - (CONTROL_PADDING * 2));
+        int top = rowBounds.top + 14;
+        return new Bounds(rowBounds.left + CONTROL_PADDING, top, rowBounds.left + CONTROL_PADDING + chipWidth, top + CONTROL_HEIGHT);
     }
 
     private Bounds getEnumPopupBounds(Layout layout, Bounds chipBounds, EnumSetting<?> setting) {
@@ -893,8 +1038,22 @@ public final class ModernClickGuiScreen extends GuiScreen {
         return new Bounds(popupBounds.left, top, popupBounds.right, top + ENUM_OPTION_HEIGHT);
     }
 
+    private Bounds getActionButtonBounds(Bounds rowBounds, String valueText) {
+        int buttonWidth = Math.max(BIND_BUTTON_WIDTH, this.fontRendererObj.getStringWidth(valueText) + 20);
+        int top = rowBounds.top + 14;
+        return new Bounds(rowBounds.left + CONTROL_PADDING, top, rowBounds.left + CONTROL_PADDING + buttonWidth, top + CONTROL_HEIGHT);
+    }
+
+    private Bounds getBindButtonBounds(Bounds rowBounds, String valueText) {
+        int buttonWidth = Math.max(BIND_BUTTON_WIDTH, this.fontRendererObj.getStringWidth(valueText) + 20);
+        int top = rowBounds.top + 14;
+        return new Bounds(rowBounds.left + CONTROL_PADDING, top, rowBounds.left + CONTROL_PADDING + buttonWidth, top + CONTROL_HEIGHT);
+    }
+
     private Bounds getSliderBounds(Bounds rowBounds) {
-        return new Bounds(rowBounds.left + 12, rowBounds.bottom - 11, rowBounds.right - 12, rowBounds.bottom - 7);
+        int sliderWidth = Math.min(CONTROL_WIDTH, rowBounds.getWidth() - (CONTROL_PADDING * 2));
+        int top = rowBounds.top + 27;
+        return new Bounds(rowBounds.left + CONTROL_PADDING, top, rowBounds.left + CONTROL_PADDING + sliderWidth, top + SLIDER_TRACK_HEIGHT);
     }
 
     private void drawOutline(int left, int top, int right, int bottom, int color) {
@@ -1019,6 +1178,46 @@ public final class ModernClickGuiScreen extends GuiScreen {
         return current + ((target - current) * clamp(speed, 0.0F, 1.0F));
     }
 
+    private void updateCategoryTransition(float delta) {
+        if (previousCategory == null) {
+            categoryTransitionProgress = 1.0F;
+            return;
+        }
+
+        categoryTransitionProgress = animate(categoryTransitionProgress, 1.0F, delta * 10.0F);
+        if (categoryTransitionProgress >= 0.995F) {
+            clearCategoryTransition();
+        }
+    }
+
+    private void beginCategoryTransition(Category fromCategory, Module fromModule, float fromModuleScroll, float fromSettingsScroll, Category toCategory) {
+        if (fromCategory == null || fromCategory == toCategory) {
+            clearCategoryTransition();
+            return;
+        }
+
+        previousCategory = fromCategory;
+        previousModule = fromModule;
+        previousModuleScroll = fromModuleScroll;
+        previousSettingsScroll = fromSettingsScroll;
+        categoryTransitionProgress = 0.0F;
+        int direction = Integer.compare(toCategory.ordinal(), fromCategory.ordinal());
+        categoryTransitionDirection = direction == 0 ? 1 : direction;
+    }
+
+    private void clearCategoryTransition() {
+        previousCategory = null;
+        previousModule = null;
+        previousModuleScroll = 0.0F;
+        previousSettingsScroll = 0.0F;
+        categoryTransitionProgress = 1.0F;
+        categoryTransitionDirection = 1;
+    }
+
+    private boolean isCategoryTransitionActive() {
+        return previousCategory != null && categoryTransitionProgress < 0.999F;
+    }
+
     private static float easeOut(float value) {
         float inverse = 1.0F - clamp(value, 0.0F, 1.0F);
         return 1.0F - inverse * inverse * inverse;
@@ -1030,6 +1229,14 @@ public final class ModernClickGuiScreen extends GuiScreen {
 
     private static int withAlpha(int color, int alpha) {
         return ((alpha & 255) << 24) | (color & 0x00FFFFFF);
+    }
+
+    private static int scaleAlpha(int color, float alphaScale) {
+        int baseAlpha = (color >>> 24) & 255;
+        if (baseAlpha == 0) {
+            baseAlpha = 255;
+        }
+        return withAlpha(color, Math.round(baseAlpha * clamp(alphaScale, 0.0F, 1.0F)));
     }
 
     private static int mixColor(int start, int end, float progress) {
