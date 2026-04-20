@@ -125,7 +125,11 @@ public final class ModernClickGuiScreen extends GuiScreen {
         clearCategoryTransition();
         lastFrameTime = 0L;
         ensureSelection();
-        initializeSnowflakes();
+        if (ClickGuiModule.areSnowflakesEnabled()) {
+            initializeSnowflakes();
+        } else {
+            snowflakes.clear();
+        }
     }
 
     @Override
@@ -133,7 +137,12 @@ public final class ModernClickGuiScreen extends GuiScreen {
         float delta = getDeltaSeconds();
         openProgress = animate(openProgress, 1.0F, delta * 8.0F);
         updateCategoryTransition(delta);
-        updateSnowflakes(delta);
+        boolean drawSnowflakes = ClickGuiModule.areSnowflakesEnabled();
+        if (drawSnowflakes) {
+            updateSnowflakes(delta);
+        } else if (!snowflakes.isEmpty()) {
+            snowflakes.clear();
+        }
 
         if (draggingWindow) {
             setWindowPosition(mouseX - dragOffsetX, mouseY - dragOffsetY);
@@ -143,15 +152,19 @@ public final class ModernClickGuiScreen extends GuiScreen {
         int accent = ClickGuiModule.getModernAccentColor();
 
         drawWindow(layout, accent);
-        beginScissor(layout.windowBounds);
-        drawSnowflakes(layout.windowBounds, 0.55F);
-        endScissor();
+        if (drawSnowflakes) {
+            beginScissor(layout.windowBounds);
+            drawSnowflakes(layout.windowBounds, 0.55F);
+            endScissor();
+        }
         drawHeader(layout, mouseX, mouseY, accent);
         drawModulePane(layout, mouseX, mouseY, accent, delta);
         drawSettingsPane(layout, mouseX, mouseY, accent, delta);
-        beginScissor(layout.windowBounds);
-        drawSnowflakes(layout.windowBounds, 0.16F);
-        endScissor();
+        if (drawSnowflakes) {
+            beginScissor(layout.windowBounds);
+            drawSnowflakes(layout.windowBounds, 0.16F);
+            endScissor();
+        }
 
         super.drawScreen(mouseX, mouseY, partialTicks);
     }
@@ -553,7 +566,10 @@ public final class ModernClickGuiScreen extends GuiScreen {
                 int nameColor = module.isEnabled()
                     ? mixColor(accent, TEXT_PRIMARY, 0.16F + (selectionAnimation * 0.18F))
                     : mixColor(TEXT_DISABLED, TEXT_PRIMARY, selectionAnimation * 0.18F);
-                this.fontRendererObj.drawString(module.getName(), rowBounds.left + 10, rowBounds.top + 7, scaleAlpha(nameColor, alphaScale));
+                String moduleName = module.getName();
+                int textX = rowBounds.left + (rowBounds.getWidth() - this.fontRendererObj.getStringWidth(moduleName)) / 2;
+                int textY = rowBounds.top + (rowBounds.getHeight() - this.fontRendererObj.FONT_HEIGHT) / 2;
+                this.fontRendererObj.drawString(moduleName, textX, textY, scaleAlpha(nameColor, alphaScale));
             }
             rowY += MODULE_ROW_HEIGHT + MODULE_ROW_GAP;
         }
@@ -696,33 +712,9 @@ public final class ModernClickGuiScreen extends GuiScreen {
 
     private void drawBooleanControl(Bounds bounds, float progress, boolean hovered, int accent, float alphaScale) {
         int fill = 0xFF000000 | mixColor(CONTROL_BACKGROUND, accent, progress);
+        int outline = 0xFF000000 | mixColor(hovered ? CONTROL_BORDER_LIGHT : CONTROL_BORDER, accent, progress * 0.72F);
         Gui.drawRect(bounds.left, bounds.top, bounds.right, bounds.bottom, scaleAlpha(fill, alphaScale));
-        drawOutline(bounds.left, bounds.top, bounds.right, bounds.bottom, scaleAlpha(0xFF000000 | CONTROL_BORDER_LIGHT, alphaScale));
-        if (progress > 0.02F) {
-            drawCheckboxCheck(bounds, 0xFFFFFFFF, progress, alphaScale);
-        }
-    }
-
-    private void drawCheckboxCheck(Bounds bounds, int color, float progress, float alphaScale) {
-        int left = bounds.left + 3;
-        int top = bounds.top + 3;
-        int animatedColor = scaleAlpha(withAlpha(color, Math.max(32, Math.round(255.0F * progress))), alphaScale);
-
-        if (progress >= 0.15F) {
-            Gui.drawRect(left, top + 4, left + 2, top + 6, animatedColor);
-        }
-        if (progress >= 0.32F) {
-            Gui.drawRect(left + 2, top + 6, left + 4, top + 8, animatedColor);
-        }
-        if (progress >= 0.5F) {
-            Gui.drawRect(left + 4, top + 4, left + 6, top + 6, animatedColor);
-        }
-        if (progress >= 0.68F) {
-            Gui.drawRect(left + 6, top + 2, left + 8, top + 4, animatedColor);
-        }
-        if (progress >= 0.84F) {
-            Gui.drawRect(left + 8, top, left + 10, top + 2, animatedColor);
-        }
+        drawOutline(bounds.left, bounds.top, bounds.right, bounds.bottom, scaleAlpha(outline, alphaScale));
     }
 
     private void drawHeaderToggle(Bounds bounds, boolean enabled, float progress, int accent, float alphaScale) {
