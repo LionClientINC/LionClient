@@ -16,6 +16,20 @@ public final class EnumSetting<T extends Enum<T>> extends Setting {
         return values[index];
     }
 
+    public T[] getValues() {
+        return values;
+    }
+
+    public boolean setIndex(int index) {
+        if (index < 0 || index >= values.length) {
+            return false;
+        }
+
+        this.index = index;
+        ConfigManager.saveActiveConfig();
+        return true;
+    }
+
     public void setValue(T value) {
         this.index = indexOf(value);
         ConfigManager.saveActiveConfig();

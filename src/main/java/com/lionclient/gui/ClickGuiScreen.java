@@ -1,5 +1,6 @@
 package com.lionclient.gui;
 
+import com.lionclient.LionClient;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.module.ModuleManager;
@@ -286,6 +287,18 @@ public final class ClickGuiScreen extends GuiScreen {
                 } else {
                     enumSetting.cycleBackward();
                 }
+                refreshClickGuiStyleIfNeeded(module, setting);
+            }
+        }
+
+        private void refreshClickGuiStyleIfNeeded(Module module, Setting setting) {
+            if (module != ClickGuiModule.getInstance() || !"Style".equals(setting.getName())) {
+                return;
+            }
+
+            LionClient client = LionClient.getInstance();
+            if (client != null) {
+                client.refreshClickGuiStyle();
             }
         }
 

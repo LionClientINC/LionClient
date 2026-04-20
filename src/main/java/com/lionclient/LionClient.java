@@ -90,6 +90,15 @@ public final class LionClient {
         }
     }
 
+    public void refreshClickGuiStyle() {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.currentScreen != clickGuiScreen && minecraft.currentScreen != modernClickGuiScreen) {
+            return;
+        }
+
+        minecraft.displayGuiScreen(ClickGuiModule.getGuiStyle() == ClickGuiModule.GuiStyle.CLASSIC ? clickGuiScreen : modernClickGuiScreen);
+    }
+
     public void openHudEditor() {
         HudModule hudModule = HudModule.getInstance();
         if (hudModule == null) {

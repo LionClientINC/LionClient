@@ -8,6 +8,7 @@ import com.lionclient.feature.setting.NumberSetting;
 import org.lwjgl.input.Keyboard;
 
 public final class ClickGuiModule extends Module {
+    private static final int FIXED_ACCENT_COLOR = 0x4A9EFF;
     private static ClickGuiModule instance;
 
     private final EnumSetting<GuiStyle> style = new EnumSetting<GuiStyle>("Style", GuiStyle.values(), GuiStyle.MODERN);
@@ -16,12 +17,30 @@ public final class ClickGuiModule extends Module {
     private final NumberSetting blue = new NumberSetting("Blue", 0, 255, 5, 168);
 
     public ClickGuiModule() {
-        super("ClickGUI", "Open and customize the ClickGUI.", Category.CLIENT, Keyboard.KEY_RSHIFT);
+        super("ClickGUI", "Open the ClickGUI.", Category.CLIENT, Keyboard.KEY_RSHIFT);
         instance = this;
         addSetting(style);
         addSetting(red);
         addSetting(green);
         addSetting(blue);
+        red.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return style.getValue() == GuiStyle.CLASSIC;
+            }
+        });
+        green.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return style.getValue() == GuiStyle.CLASSIC;
+            }
+        });
+        blue.setVisibility(new java.util.function.BooleanSupplier() {
+            @Override
+            public boolean getAsBoolean() {
+                return style.getValue() == GuiStyle.CLASSIC;
+            }
+        });
     }
 
     @Override
@@ -48,6 +67,14 @@ public final class ClickGuiModule extends Module {
 
     public static GuiStyle getGuiStyle() {
         return instance == null ? GuiStyle.MODERN : instance.style.getValue();
+    }
+
+    public static ClickGuiModule getInstance() {
+        return instance;
+    }
+
+    public static int getModernAccentColor() {
+        return FIXED_ACCENT_COLOR;
     }
 
     public static int getLightAccentColor() {
