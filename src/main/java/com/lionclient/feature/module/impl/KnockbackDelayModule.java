@@ -7,6 +7,7 @@ import com.lionclient.feature.setting.BooleanSetting;
 import com.lionclient.feature.setting.NumberSetting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.server.S06PacketUpdateHealth;
 import net.minecraft.network.play.server.S12PacketEntityVelocity;
@@ -16,6 +17,8 @@ import org.lwjgl.input.Keyboard;
 
 public final class KnockbackDelayModule extends Module {
     private static final long TRIGGER_WINDOW_MS = 250L;
+    private static final double NEARBY_PLAYER_RANGE = 5.0D;
+    private static final double NEARBY_PLAYER_RANGE_SQ = NEARBY_PLAYER_RANGE * NEARBY_PLAYER_RANGE;
 
     private final NumberSetting delay = new NumberSetting("Delay", 0, 2000, 10, 200);
     private final BooleanSetting renderIndicator = new BooleanSetting("Render Indicator", false);
@@ -160,7 +163,7 @@ public final class KnockbackDelayModule extends Module {
 
     private void registerKnockbackSignal() {
         long now = System.currentTimeMillis();
-        if (now < suppressLocalTriggersUntil) {
+        if (now < suppressLocalTriggersUntil || !hasNearbyPlayerInRange()) {
             return;
         }
 
@@ -171,7 +174,7 @@ public final class KnockbackDelayModule extends Module {
 
     private void registerDamageSignal() {
         long now = System.currentTimeMillis();
-        if (now < suppressLocalTriggersUntil) {
+        if (now < suppressLocalTriggersUntil || !hasNearbyPlayerInRange()) {
             return;
         }
 
@@ -209,6 +212,34 @@ public final class KnockbackDelayModule extends Module {
         if (pendingDamageAt > 0L && now - pendingDamageAt > TRIGGER_WINDOW_MS) {
             pendingDamageAt = 0L;
         }
+    }
+
+    private boolean hasNearbyPlayerInRange() {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.thePlayer == null || minecraft.theWorld == null) {
+            return false;
+        }
+
+        for (Object object : minecraft.theWorld.playerEntities) {
+            if (!(object instanceof EntityPlayer)) {
+                continue;
+            }
+
+            EntityPlayer player = (EntityPlayer) object;
+            if (player == minecraft.thePlayer
+                || player.isDead
+                || player.getHealth() <= 0.0F
+                || player.isInvisible()
+                || AntiBotModule.shouldIgnore(player)) {
+                continue;
+            }
+
+            if (minecraft.thePlayer.getDistanceSqToEntity(player) <= NEARBY_PLAYER_RANGE_SQ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private int getRemainingDelayMillis() {
