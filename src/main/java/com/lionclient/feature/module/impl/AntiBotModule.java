@@ -11,7 +11,7 @@ import org.lwjgl.input.Keyboard;
 
 public final class AntiBotModule extends Module {
     public AntiBotModule() {
-        super("AntiBot", "Filters NPCs from players.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("AntiBot", "Filters NPCs from players.", Category.CLIENT, Keyboard.KEY_NONE);
     }
 
     public static boolean shouldIgnore(EntityPlayer player) {

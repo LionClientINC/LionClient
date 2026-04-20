@@ -23,7 +23,7 @@ public final class ClickGuiModule extends Module {
     private final NumberSetting modernBlue = new NumberSetting("Modern Blue", 0, 255, 1, 255);
 
     public ClickGuiModule() {
-        super("ClickGUI", "Open the ClickGUI.", Category.CLIENT, Keyboard.KEY_RSHIFT);
+        super("ClickGUI", "Configure the ClickGUI", Category.CLIENT, Keyboard.KEY_RSHIFT);
         instance = this;
         addSetting(style);
         addSetting(snowflakes);

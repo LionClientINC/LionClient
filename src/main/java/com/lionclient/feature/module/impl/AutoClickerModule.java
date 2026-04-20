@@ -49,7 +49,7 @@ public final class AutoClickerModule extends Module {
     private Mode lastMode;
 
     public AutoClickerModule() {
-        super("LeftClicker", "Automatically clicks for you, use mode Record for strict anticheats like Polar.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("LeftClicker", "Automatically left-clicks for you, use mode Record for strict anticheats like Polar.", Category.COMBAT, Keyboard.KEY_NONE);
         guiClickMethod = findGuiClickMethod();
         leftClickCounterField = findLeftClickCounterField();
         minCps.setVisibility(new java.util.function.BooleanSupplier() {
