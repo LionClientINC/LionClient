@@ -4,6 +4,7 @@ import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.DecimalSetting;
 import com.lionclient.feature.setting.NumberSetting;
+import com.lionclient.util.MouseButtonHelper;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
@@ -31,6 +32,9 @@ public final class ReachModule extends Module {
     public void onMouseEvent(MouseEvent event) {
         Minecraft minecraft = Minecraft.getMinecraft();
         if (event.button != 0 || !event.buttonstate) {
+            return;
+        }
+        if (MouseButtonHelper.isDispatchingSyntheticEvent()) {
             return;
         }
 

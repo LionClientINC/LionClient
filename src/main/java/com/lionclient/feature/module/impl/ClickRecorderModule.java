@@ -3,6 +3,7 @@ package com.lionclient.feature.module.impl;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.BooleanSetting;
+import com.lionclient.util.MouseButtonHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.ChatComponentText;
 import net.minecraftforge.client.event.MouseEvent;
@@ -47,6 +48,9 @@ public final class ClickRecorderModule extends Module {
         }
 
         if (event.button != 0 || !event.buttonstate) {
+            return;
+        }
+        if (MouseButtonHelper.isDispatchingSyntheticEvent()) {
             return;
         }
 

@@ -5,7 +5,13 @@
   "refmap": "mixins.lionclient.refmap.json",
   "compatibilityLevel": "JAVA_8",
   "client": [
-    "MixinNetworkManager"
+    "MixinEntity",
+    "MixinEntityLivingBase",
+    "MixinNetworkManager",
+    "MixinMinecraft",
+    "MixinEntityRenderer",
+    "MixinEntityPlayerSP",
+    "MixinMovementInputFromOptions"
   ],
   "injectors": {
     "defaultRequire": 1
