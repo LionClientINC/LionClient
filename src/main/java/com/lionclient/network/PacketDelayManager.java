@@ -1,6 +1,7 @@
 package com.lionclient.network;
 
 import com.lionclient.feature.module.ModuleManager;
+import com.lionclient.mixin.accessor.NetworkManagerInvoker;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
@@ -13,9 +14,8 @@ import java.util.Queue;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.NetHandlerPlayClient;
+import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
-import net.minecraft.network.ThreadQuickExitException;
-import net.minecraft.network.play.INetHandlerPlayClient;
 
 public final class PacketDelayManager {
     private static volatile PacketDelayManager instance;
@@ -25,6 +25,9 @@ public final class PacketDelayManager {
     private final Queue<QueuedOutboundPacket> outboundQueue = new ArrayDeque<QueuedOutboundPacket>();
     private final Queue<QueuedInboundPacket> inboundQueue = new ArrayDeque<QueuedInboundPacket>();
     private final Set<Packet<?>> outboundFastTrack = Collections.newSetFromMap(
+        Collections.synchronizedMap(new IdentityHashMap<Packet<?>, Boolean>())
+    );
+    private final Set<Packet<?>> inboundFastTrack = Collections.newSetFromMap(
         Collections.synchronizedMap(new IdentityHashMap<Packet<?>, Boolean>())
     );
 
@@ -52,6 +55,8 @@ public final class PacketDelayManager {
 
         if (moduleManager.consumeInboundFlushRequest()) {
             flushQueuedInboundPackets();
+        } else if (!moduleManager.isInboundPacketDelayActive()) {
+            flushQueuedInboundPackets();
         }
 
         flushReadyOutboundPackets();
@@ -78,6 +83,10 @@ public final class PacketDelayManager {
     }
 
     public boolean interceptInbound(ChannelHandlerContext context, Packet<?> packet) {
+        if (consumeInboundFastTrack(packet)) {
+            return false;
+        }
+
         moduleManager.onInboundPacket(packet);
         int delay = moduleManager.getInboundPacketDelay(packet);
         if (delay <= 0 && !hasQueuedInboundPackets()) {
@@ -85,27 +94,9 @@ public final class PacketDelayManager {
         }
 
         synchronized (inboundQueue) {
-            inboundQueue.add(new QueuedInboundPacket(packet, System.currentTimeMillis()));
+            inboundQueue.add(new QueuedInboundPacket(context, packet));
         }
         return true;
-    }
-
-    public void releaseExpiredInboundPackets(long maxAgeMs) {
-        long cutoff = System.currentTimeMillis() - Math.max(0L, maxAgeMs);
-        List<QueuedInboundPacket> packets = new ArrayList<QueuedInboundPacket>();
-
-        synchronized (inboundQueue) {
-            for (QueuedInboundPacket packet : new ArrayList<QueuedInboundPacket>(inboundQueue)) {
-                if (packet.queuedAt <= cutoff) {
-                    packets.add(packet);
-                }
-            }
-            inboundQueue.removeAll(packets);
-        }
-
-        for (QueuedInboundPacket packet : packets) {
-            releaseInbound(packet.packet);
-        }
     }
 
     private void flushQueuedOutboundPackets() {
@@ -130,7 +121,7 @@ public final class PacketDelayManager {
         }
 
         for (QueuedInboundPacket packet : packets) {
-            releaseInbound(packet.packet);
+            releaseInbound(packet);
         }
     }
 
@@ -158,21 +149,37 @@ public final class PacketDelayManager {
         netHandler.addToSendQueue(packet);
     }
 
-    private void releaseInbound(Packet<?> packet) {
+    private void releaseInbound(final QueuedInboundPacket queuedPacket) {
         NetHandlerPlayClient netHandler = minecraft.getNetHandler();
         if (netHandler == null) {
             return;
         }
 
-        try {
-            ((Packet<INetHandlerPlayClient>) packet).processPacket(netHandler);
-        } catch (ThreadQuickExitException ignored) {
-        } catch (Exception ignored) {
+        final NetworkManager networkManager = netHandler.getNetworkManager();
+        final ChannelHandlerContext context = queuedPacket.context;
+        if (networkManager == null || context == null || context.channel() == null || !context.channel().isOpen()) {
+            return;
         }
+
+        inboundFastTrack.add(queuedPacket.packet);
+        context.channel().eventLoop().execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    ((NetworkManagerInvoker) networkManager).lionclient$invokeChannelRead0(context, queuedPacket.packet);
+                } catch (Exception ignored) {
+                    inboundFastTrack.remove(queuedPacket.packet);
+                }
+            }
+        });
     }
 
     private boolean consumeOutboundFastTrack(Packet<?> packet) {
         return outboundFastTrack.remove(packet);
+    }
+
+    private boolean consumeInboundFastTrack(Packet<?> packet) {
+        return inboundFastTrack.remove(packet);
     }
 
     private void clearQueues() {
@@ -183,6 +190,7 @@ public final class PacketDelayManager {
             inboundQueue.clear();
         }
         outboundFastTrack.clear();
+        inboundFastTrack.clear();
     }
 
     private boolean hasQueuedInboundPackets() {
@@ -202,12 +210,12 @@ public final class PacketDelayManager {
     }
 
     private static final class QueuedInboundPacket {
+        private final ChannelHandlerContext context;
         private final Packet<?> packet;
-        private final long queuedAt;
 
-        private QueuedInboundPacket(Packet<?> packet, long queuedAt) {
+        private QueuedInboundPacket(ChannelHandlerContext context, Packet<?> packet) {
+            this.context = context;
             this.packet = packet;
-            this.queuedAt = queuedAt;
         }
     }
 }

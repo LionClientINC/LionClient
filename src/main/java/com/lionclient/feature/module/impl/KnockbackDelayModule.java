@@ -1,6 +1,5 @@
 package com.lionclient.feature.module.impl;
 
-import com.lionclient.LionClient;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.BooleanSetting;
@@ -59,19 +58,13 @@ public final class KnockbackDelayModule extends Module {
         }
 
         if (minecraft.thePlayer.hurtTime > lastHurtTime) {
-            registerDamageSignal();
+            registerLocalDamageSignal();
         }
         lastHurtTime = minecraft.thePlayer.hurtTime;
         lastHealth = minecraft.thePlayer.getHealth();
 
-        LionClient client = LionClient.getInstance();
-        if (client != null) {
-            client.getPacketDelayManager().releaseExpiredInboundPackets(delay.getValue());
-        }
-
         if (getRemainingDelayMillis() <= 0) {
             delayEndAt = 0L;
-            pendingHoldEndAt = 0L;
         }
 
         expirePendingSignals();
@@ -100,7 +93,7 @@ public final class KnockbackDelayModule extends Module {
         if (packet instanceof S06PacketUpdateHealth) {
             S06PacketUpdateHealth healthPacket = (S06PacketUpdateHealth) packet;
             if (lastHealth >= 0.0F && healthPacket.getHealth() < lastHealth) {
-                registerDamageSignal();
+                registerInboundDamageSignal();
             }
             lastHealth = healthPacket.getHealth();
         }
@@ -163,7 +156,7 @@ public final class KnockbackDelayModule extends Module {
 
     private void registerKnockbackSignal() {
         long now = System.currentTimeMillis();
-        if (now < suppressLocalTriggersUntil || !hasNearbyPlayerInRange()) {
+        if (!hasNearbyPlayerInRange()) {
             return;
         }
 
@@ -172,19 +165,31 @@ public final class KnockbackDelayModule extends Module {
         tryArmDelay(now);
     }
 
-    private void registerDamageSignal() {
+    private void registerLocalDamageSignal() {
         long now = System.currentTimeMillis();
         if (now < suppressLocalTriggersUntil || !hasNearbyPlayerInRange()) {
             return;
         }
 
         pendingDamageAt = now;
+        pendingHoldEndAt = Math.max(pendingHoldEndAt, now + TRIGGER_WINDOW_MS);
+        tryArmDelay(now);
+    }
+
+    private void registerInboundDamageSignal() {
+        long now = System.currentTimeMillis();
+        if (!hasNearbyPlayerInRange()) {
+            return;
+        }
+
+        pendingDamageAt = now;
+        pendingHoldEndAt = Math.max(pendingHoldEndAt, now + TRIGGER_WINDOW_MS);
         tryArmDelay(now);
     }
 
     private void tryArmDelay(long now) {
         int configuredDelay = delay.getValue();
-        if (configuredDelay <= 0 || now < delayEndAt) {
+        if (configuredDelay <= 0) {
             return;
         }
 
@@ -196,9 +201,9 @@ public final class KnockbackDelayModule extends Module {
             return;
         }
 
-        delayEndAt = now + configuredDelay;
+        delayEndAt = Math.max(delayEndAt, now + configuredDelay);
         pendingHoldEndAt = 0L;
-        suppressLocalTriggersUntil = delayEndAt + 150L;
+        suppressLocalTriggersUntil = Math.max(suppressLocalTriggersUntil, delayEndAt + 150L);
         pendingKnockbackAt = 0L;
         pendingDamageAt = 0L;
     }
