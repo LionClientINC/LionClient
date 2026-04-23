@@ -373,23 +373,35 @@ public final class BedPlatesModule extends Module {
 
         float scale = getLabelScale(bed.distanceSq);
         GlStateManager.pushMatrix();
-        GlStateManager.translate(x, y, z);
-        GlStateManager.rotate(-mc.getRenderManager().playerViewY, 0.0F, 1.0F, 0.0F);
-        GlStateManager.rotate(mc.getRenderManager().playerViewX, 1.0F, 0.0F, 0.0F);
-        GlStateManager.scale(-scale, -scale, scale);
-        GlStateManager.disableLighting();
-        GlStateManager.disableDepth();
-        GlStateManager.enableBlend();
-        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
+        try {
+            GlStateManager.translate(x, y, z);
+            GL11.glNormal3f(0.0F, 1.0F, 0.0F);
+            GlStateManager.rotate(-mc.getRenderManager().playerViewY, 0.0F, 1.0F, 0.0F);
+            GlStateManager.rotate(mc.getRenderManager().playerViewX, 1.0F, 0.0F, 0.0F);
+            GlStateManager.scale(-scale, -scale, scale);
+            GlStateManager.disableLighting();
+            GlStateManager.depthMask(false);
+            GlStateManager.disableDepth();
+            GlStateManager.enableBlend();
+            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
 
-        int width = font.getStringWidth(defenseText) / 2;
-        drawBackground(width);
-        font.drawStringWithShadow(defenseText, -width, 0, 0xFFFFFFFF);
-
-        GlStateManager.disableBlend();
-        GlStateManager.enableDepth();
-        GlStateManager.enableLighting();
-        GlStateManager.popMatrix();
+            int width = font.getStringWidth(defenseText) / 2;
+            drawBackground(width);
+            font.drawString(defenseText, -width, 0, 0x20FFFFFF);
+            GlStateManager.enableDepth();
+            GlStateManager.depthMask(true);
+            font.drawString(defenseText, -width, 0, 0xFFFFFFFF);
+        } finally {
+            GlStateManager.disableBlend();
+            GlStateManager.enableDepth();
+            GlStateManager.depthMask(true);
+            GlStateManager.disableLighting();
+            GlStateManager.enableTexture2D();
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+            GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+            GlStateManager.popMatrix();
+        }
     }
 
     private float getLabelScale(double distanceSq) {

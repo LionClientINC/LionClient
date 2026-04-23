@@ -55,62 +55,66 @@ public final class PlayerEspModule extends Module {
         boolean modern = mode.getValue() == Mode.MODERN;
 
         GL11.glPushMatrix();
-        GlStateManager.disableTexture2D();
-        GlStateManager.enableBlend();
-        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
-        GlStateManager.disableDepth();
-        GlStateManager.depthMask(false);
-        GlStateManager.disableLighting();
-        GlStateManager.disableCull();
-        GL11.glLineWidth(1.8F);
+        try {
+            GlStateManager.disableTexture2D();
+            GlStateManager.enableBlend();
+            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
+            GlStateManager.disableDepth();
+            GlStateManager.depthMask(false);
+            GlStateManager.disableLighting();
+            GlStateManager.disableCull();
+            GL11.glLineWidth(1.8F);
 
-        double viewerX = minecraft.getRenderManager().viewerPosX;
-        double viewerY = minecraft.getRenderManager().viewerPosY;
-        double viewerZ = minecraft.getRenderManager().viewerPosZ;
+            double viewerX = minecraft.getRenderManager().viewerPosX;
+            double viewerY = minecraft.getRenderManager().viewerPosY;
+            double viewerZ = minecraft.getRenderManager().viewerPosZ;
 
-        for (Object object : minecraft.theWorld.playerEntities) {
-            if (!(object instanceof EntityPlayer)) {
-                continue;
+            for (Object object : minecraft.theWorld.playerEntities) {
+                if (!(object instanceof EntityPlayer)) {
+                    continue;
+                }
+
+                EntityPlayer player = (EntityPlayer) object;
+                if (player == minecraft.thePlayer || player.isInvisible() || AntiBotModule.shouldIgnore(player)) {
+                    continue;
+                }
+
+                double x = player.lastTickPosX + (player.posX - player.lastTickPosX) * partialTicks - viewerX;
+                double y = player.lastTickPosY + (player.posY - player.lastTickPosY) * partialTicks - viewerY;
+                double z = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * partialTicks - viewerZ;
+
+                AxisAlignedBB bb = player.getEntityBoundingBox();
+                AxisAlignedBB renderBox = new AxisAlignedBB(
+                    bb.minX - player.posX + x,
+                    bb.minY - player.posY + y,
+                    bb.minZ - player.posZ + z,
+                    bb.maxX - player.posX + x,
+                    bb.maxY - player.posY + y,
+                    bb.maxZ - player.posZ + z
+                ).expand(0.05D, 0.1D, 0.05D);
+
+                float[] colors = modern ? getModernColor(player) : getClassicColor();
+                if (modern) {
+                    drawFilledBox(renderBox, colors[0], colors[1], colors[2], 0.12F);
+                }
+                drawOutlinedBox(renderBox, colors[0], colors[1], colors[2], modern ? 0.95F : 1.0F);
             }
-
-            EntityPlayer player = (EntityPlayer) object;
-            if (player == minecraft.thePlayer || player.isInvisible() || AntiBotModule.shouldIgnore(player)) {
-                continue;
-            }
-
-            double x = player.lastTickPosX + (player.posX - player.lastTickPosX) * partialTicks - viewerX;
-            double y = player.lastTickPosY + (player.posY - player.lastTickPosY) * partialTicks - viewerY;
-            double z = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * partialTicks - viewerZ;
-
-            AxisAlignedBB bb = player.getEntityBoundingBox();
-            AxisAlignedBB renderBox = new AxisAlignedBB(
-                bb.minX - player.posX + x,
-                bb.minY - player.posY + y,
-                bb.minZ - player.posZ + z,
-                bb.maxX - player.posX + x,
-                bb.maxY - player.posY + y,
-                bb.maxZ - player.posZ + z
-            ).expand(0.05D, 0.1D, 0.05D);
-
-            float[] colors = modern ? getModernColor(player) : getClassicColor();
-            if (modern) {
-                drawFilledBox(renderBox, colors[0], colors[1], colors[2], 0.12F);
-            }
-            drawOutlinedBox(renderBox, colors[0], colors[1], colors[2], modern ? 0.95F : 1.0F);
+        } finally {
+            GL11.glLineWidth(1.0F);
+            GlStateManager.enableCull();
+            GlStateManager.disableLighting();
+            GlStateManager.depthMask(true);
+            GlStateManager.enableDepth();
+            GlStateManager.disableBlend();
+            GlStateManager.enableTexture2D();
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+            GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+            GL11.glPopMatrix();
         }
-
-        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-        GlStateManager.enableCull();
-        GlStateManager.enableLighting();
-        GlStateManager.depthMask(true);
-        GlStateManager.enableDepth();
-        GlStateManager.disableBlend();
-        GlStateManager.enableTexture2D();
-        GL11.glPopMatrix();
     }
 
     private void drawOutlinedBox(AxisAlignedBB bb, float r, float g, float b, float a) {
-        GL11.glColor4f(r, g, b, a);
+        GlStateManager.color(r, g, b, a);
         GL11.glBegin(GL11.GL_LINES);
 
         vertex(bb.minX, bb.minY, bb.minZ, bb.maxX, bb.minY, bb.minZ);
@@ -132,7 +136,7 @@ public final class PlayerEspModule extends Module {
     }
 
     private void drawFilledBox(AxisAlignedBB bb, float r, float g, float b, float a) {
-        GL11.glColor4f(r, g, b, a);
+        GlStateManager.color(r, g, b, a);
         GL11.glBegin(GL11.GL_QUADS);
 
         quad(bb.minX, bb.minY, bb.minZ, bb.maxX, bb.minY, bb.minZ, bb.maxX, bb.maxY, bb.minZ, bb.minX, bb.maxY, bb.minZ);
