@@ -2,6 +2,7 @@ package com.lionclient.mixin;
 
 import com.lionclient.LionClient;
 import com.lionclient.combat.ClientRotationHelper;
+import com.lionclient.feature.module.impl.AntiFireballModule;
 import com.lionclient.feature.module.impl.KillAuraModule;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
@@ -40,6 +41,11 @@ public abstract class MixinEntityRenderer {
         if (killAura != null) {
             killAura.modifyMouseOverFromGetMouseOver(partialTicks);
         }
+
+        AntiFireballModule antiFireball = getAntiFireball();
+        if (antiFireball != null) {
+            antiFireball.modifyMouseOverFromGetMouseOver(partialTicks);
+        }
     }
 
     @Inject(method = "getMouseOver", at = @At("RETURN"))
@@ -59,5 +65,10 @@ public abstract class MixinEntityRenderer {
     private static KillAuraModule getKillAura() {
         LionClient client = LionClient.getInstance();
         return client == null ? null : client.getModuleManager().getModule(KillAuraModule.class);
+    }
+
+    private static AntiFireballModule getAntiFireball() {
+        LionClient client = LionClient.getInstance();
+        return client == null ? null : client.getModuleManager().getModule(AntiFireballModule.class);
     }
 }

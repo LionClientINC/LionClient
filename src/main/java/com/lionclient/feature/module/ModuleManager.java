@@ -3,6 +3,7 @@ package com.lionclient.feature.module;
 import com.lionclient.config.ConfigManager;
 import com.lionclient.feature.module.impl.AutoClickerModule;
 import com.lionclient.feature.module.impl.AntiBotModule;
+import com.lionclient.feature.module.impl.AntiFireballModule;
 import com.lionclient.feature.module.impl.BedPlatesModule;
 import com.lionclient.feature.module.impl.ClickGuiModule;
 import com.lionclient.feature.module.impl.ClickRecorderModule;
@@ -46,6 +47,7 @@ public final class ModuleManager {
         register(new RightClickerModule());
         register(new ReachModule());
         register(new AntiBotModule());
+        register(new AntiFireballModule());
         register(new KillAuraModule());
         register(new KnockbackDelayModule());
         register(new ClickRecorderModule());
