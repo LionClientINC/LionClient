@@ -442,6 +442,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
 
     private void drawHeader(Layout layout, int mouseX, int mouseY, int accent) {
         this.fontRendererObj.drawStringWithShadow("LionClient", layout.windowX + 16, layout.windowY + 15, TEXT_PRIMARY);
+        drawScaledText(LionClient.VERSION, layout.windowX + 16, layout.windowY + 28, TEXT_SECONDARY, SMALL_LABEL_SCALE);
 
         int index = 0;
         for (Category category : Category.values()) {
