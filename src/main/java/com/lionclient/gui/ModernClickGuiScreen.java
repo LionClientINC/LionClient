@@ -233,6 +233,10 @@ public final class ModernClickGuiScreen extends GuiScreen {
             return;
         }
 
+        if (handleCloseKeybind(keyCode)) {
+            return;
+        }
+
         super.keyTyped(typedChar, keyCode);
     }
 
@@ -268,6 +272,25 @@ public final class ModernClickGuiScreen extends GuiScreen {
         draggingSetting = null;
         bindingModule = null;
         expandedEnumSetting = null;
+    }
+
+    private boolean handleCloseKeybind(int keyCode) {
+        if (keyCode == Keyboard.KEY_NONE) {
+            return false;
+        }
+
+        ClickGuiModule clickGuiModule = ClickGuiModule.getInstance();
+        if (clickGuiModule == null || keyCode != clickGuiModule.getKeyCode()) {
+            return false;
+        }
+
+        LionClient client = LionClient.getInstance();
+        if (client == null) {
+            return false;
+        }
+
+        client.toggleClickGui();
+        return true;
     }
 
     private boolean handleCategoryClick(Layout layout, int mouseX, int mouseY) {

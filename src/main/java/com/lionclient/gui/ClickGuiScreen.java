@@ -62,6 +62,10 @@ public final class ClickGuiScreen extends GuiScreen {
             }
         }
 
+        if (handleCloseKeybind(keyCode)) {
+            return;
+        }
+
         super.keyTyped(typedChar, keyCode);
     }
 
@@ -90,6 +94,25 @@ public final class ClickGuiScreen extends GuiScreen {
     @Override
     public boolean doesGuiPauseGame() {
         return false;
+    }
+
+    private boolean handleCloseKeybind(int keyCode) {
+        if (keyCode == Keyboard.KEY_NONE) {
+            return false;
+        }
+
+        ClickGuiModule clickGuiModule = ClickGuiModule.getInstance();
+        if (clickGuiModule == null || keyCode != clickGuiModule.getKeyCode()) {
+            return false;
+        }
+
+        LionClient client = LionClient.getInstance();
+        if (client == null) {
+            return false;
+        }
+
+        client.toggleClickGui();
+        return true;
     }
 
     private static final class CategoryPanel {
