@@ -96,8 +96,6 @@ public final class AntiFireballModule extends Module {
 
         fireball = findFireball(minecraft);
         if (shouldCancelMovement(minecraft)) {
-            minecraft.thePlayer.motionX = 0.0D;
-            minecraft.thePlayer.motionZ = 0.0D;
             minecraft.thePlayer.setSprinting(false);
         }
     }
