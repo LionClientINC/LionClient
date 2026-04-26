@@ -1,6 +1,7 @@
 package com.lionclient.feature.module;
 
 import com.lionclient.config.ConfigManager;
+import com.lionclient.feature.module.impl.AimAssistModule;
 import com.lionclient.feature.module.impl.AutoClickerModule;
 import com.lionclient.feature.module.impl.AntiBotModule;
 import com.lionclient.feature.module.impl.AntiFireballModule;
@@ -49,6 +50,7 @@ public final class ModuleManager {
         register(new ReachModule());
         register(new AntiBotModule());
         register(new AntiFireballModule());
+        register(new AimAssistModule());
         register(new KillAuraModule());
         register(new KnockbackDelayModule());
         register(ClutchModule.getInstance());
