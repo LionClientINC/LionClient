@@ -9,6 +9,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
@@ -57,6 +58,8 @@ public final class PacketDelayManager {
             flushQueuedInboundPackets();
         } else if (!moduleManager.isInboundPacketDelayActive()) {
             flushQueuedInboundPackets();
+        } else {
+            flushReadyInboundPackets();
         }
 
         flushReadyOutboundPackets();
@@ -89,13 +92,14 @@ public final class PacketDelayManager {
 
         moduleManager.onInboundPacket(packet);
         int delay = moduleManager.getInboundPacketDelay(packet);
-        if (delay <= 0 && !hasQueuedInboundPackets()) {
+        if (delay <= 0) {
             return false;
         }
 
         synchronized (inboundQueue) {
-            inboundQueue.add(new QueuedInboundPacket(context, packet));
+            inboundQueue.add(new QueuedInboundPacket(context, packet, System.currentTimeMillis() + delay));
         }
+        moduleManager.onInboundPacketQueued(packet);
         return true;
     }
 
@@ -139,6 +143,27 @@ public final class PacketDelayManager {
         }
     }
 
+    private void flushReadyInboundPackets() {
+        long now = System.currentTimeMillis();
+        List<QueuedInboundPacket> packets = new ArrayList<QueuedInboundPacket>();
+        synchronized (inboundQueue) {
+            Iterator<QueuedInboundPacket> iterator = inboundQueue.iterator();
+            while (iterator.hasNext()) {
+                QueuedInboundPacket queuedPacket = iterator.next();
+                if (queuedPacket.releaseAt > now) {
+                    continue;
+                }
+
+                packets.add(queuedPacket);
+                iterator.remove();
+            }
+        }
+
+        for (QueuedInboundPacket packet : packets) {
+            releaseInbound(packet);
+        }
+    }
+
     private void releaseOutbound(Packet<?> packet) {
         NetHandlerPlayClient netHandler = minecraft.getNetHandler();
         if (netHandler == null) {
@@ -150,6 +175,7 @@ public final class PacketDelayManager {
     }
 
     private void releaseInbound(final QueuedInboundPacket queuedPacket) {
+        moduleManager.onInboundPacketReleased(queuedPacket.packet);
         NetHandlerPlayClient netHandler = minecraft.getNetHandler();
         if (netHandler == null) {
             return;
@@ -193,12 +219,6 @@ public final class PacketDelayManager {
         inboundFastTrack.clear();
     }
 
-    private boolean hasQueuedInboundPackets() {
-        synchronized (inboundQueue) {
-            return !inboundQueue.isEmpty();
-        }
-    }
-
     private static final class QueuedOutboundPacket {
         private final Packet<?> packet;
         private final long releaseAt;
@@ -212,10 +232,12 @@ public final class PacketDelayManager {
     private static final class QueuedInboundPacket {
         private final ChannelHandlerContext context;
         private final Packet<?> packet;
+        private final long releaseAt;
 
-        private QueuedInboundPacket(ChannelHandlerContext context, Packet<?> packet) {
+        private QueuedInboundPacket(ChannelHandlerContext context, Packet<?> packet, long releaseAt) {
             this.context = context;
             this.packet = packet;
+            this.releaseAt = releaseAt;
         }
     }
 }

@@ -137,6 +137,12 @@ public abstract class Module {
     public void onInboundPacket(Packet<?> packet) {
     }
 
+    public void onInboundPacketQueued(Packet<?> packet) {
+    }
+
+    public void onInboundPacketReleased(Packet<?> packet) {
+    }
+
     public boolean isPacketDelayActive() {
         return false;
     }

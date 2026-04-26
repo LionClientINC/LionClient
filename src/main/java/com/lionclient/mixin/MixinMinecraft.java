@@ -2,6 +2,7 @@ package com.lionclient.mixin;
 
 import com.lionclient.combat.ClientRotationHelper;
 import com.lionclient.event.PrePlayerInteractEvent;
+import com.lionclient.event.RunTickStartEvent;
 import net.minecraftforge.common.MinecraftForge;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
@@ -14,6 +15,7 @@ public abstract class MixinMinecraft {
     @Inject(method = "runTick", at = @At("HEAD"))
     private void lionclient$onRunTickStart(CallbackInfo callbackInfo) {
         ClientRotationHelper.get().onRunTickStart();
+        MinecraftForge.EVENT_BUS.post(new RunTickStartEvent());
     }
 
     @Inject(method = "runTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/EntityRenderer;getMouseOver(F)V", shift = At.Shift.BEFORE))
