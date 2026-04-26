@@ -3,6 +3,7 @@ package com.lionclient.feature.module.impl;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.BooleanSetting;
+import com.lionclient.feature.setting.DecimalSetting;
 import com.lionclient.feature.setting.NumberSetting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
@@ -15,11 +16,9 @@ import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import org.lwjgl.input.Keyboard;
 
 public final class KnockbackDelayModule extends Module {
-    private static final long TRIGGER_WINDOW_MS = 250L;
-    private static final double NEARBY_PLAYER_RANGE = 5.0D;
-    private static final double NEARBY_PLAYER_RANGE_SQ = NEARBY_PLAYER_RANGE * NEARBY_PLAYER_RANGE;
-
     private final NumberSetting delay = new NumberSetting("Delay", 0, 2000, 10, 200);
+    private final NumberSetting triggerWindow = new NumberSetting("Trigger Window", 1, 1000, 10, 250);
+    private final DecimalSetting nearbyPlayerRange = new DecimalSetting("Nearby Range", 0.5D, 12.0D, 0.5D, 5.0D);
     private final BooleanSetting renderIndicator = new BooleanSetting("Render Indicator", false);
 
     private volatile long delayEndAt;
@@ -34,6 +33,8 @@ public final class KnockbackDelayModule extends Module {
     public KnockbackDelayModule() {
         super("KnockbackDelay", "Delays all packets for a set period after knockback.", Category.COMBAT, Keyboard.KEY_NONE);
         addSetting(delay);
+        addSetting(triggerWindow);
+        addSetting(nearbyPlayerRange);
         addSetting(renderIndicator);
     }
 
@@ -161,7 +162,7 @@ public final class KnockbackDelayModule extends Module {
         }
 
         pendingKnockbackAt = now;
-        pendingHoldEndAt = Math.max(pendingHoldEndAt, now + TRIGGER_WINDOW_MS);
+        pendingHoldEndAt = Math.max(pendingHoldEndAt, now + getTriggerWindowMillis());
         tryArmDelay(now);
     }
 
@@ -172,7 +173,7 @@ public final class KnockbackDelayModule extends Module {
         }
 
         pendingDamageAt = now;
-        pendingHoldEndAt = Math.max(pendingHoldEndAt, now + TRIGGER_WINDOW_MS);
+        pendingHoldEndAt = Math.max(pendingHoldEndAt, now + getTriggerWindowMillis());
         tryArmDelay(now);
     }
 
@@ -183,7 +184,7 @@ public final class KnockbackDelayModule extends Module {
         }
 
         pendingDamageAt = now;
-        pendingHoldEndAt = Math.max(pendingHoldEndAt, now + TRIGGER_WINDOW_MS);
+        pendingHoldEndAt = Math.max(pendingHoldEndAt, now + getTriggerWindowMillis());
         tryArmDelay(now);
     }
 
@@ -197,7 +198,7 @@ public final class KnockbackDelayModule extends Module {
             return;
         }
 
-        if (Math.abs(pendingKnockbackAt - pendingDamageAt) > TRIGGER_WINDOW_MS) {
+        if (Math.abs(pendingKnockbackAt - pendingDamageAt) > getTriggerWindowMillis()) {
             return;
         }
 
@@ -210,11 +211,12 @@ public final class KnockbackDelayModule extends Module {
 
     private void expirePendingSignals() {
         long now = System.currentTimeMillis();
-        if (pendingKnockbackAt > 0L && now - pendingKnockbackAt > TRIGGER_WINDOW_MS) {
+        long triggerWindowMillis = getTriggerWindowMillis();
+        if (pendingKnockbackAt > 0L && now - pendingKnockbackAt > triggerWindowMillis) {
             pendingKnockbackAt = 0L;
             pendingHoldEndAt = 0L;
         }
-        if (pendingDamageAt > 0L && now - pendingDamageAt > TRIGGER_WINDOW_MS) {
+        if (pendingDamageAt > 0L && now - pendingDamageAt > triggerWindowMillis) {
             pendingDamageAt = 0L;
         }
     }
@@ -225,6 +227,7 @@ public final class KnockbackDelayModule extends Module {
             return false;
         }
 
+        double nearbyPlayerRangeSq = getNearbyPlayerRangeSq();
         for (Object object : minecraft.theWorld.playerEntities) {
             if (!(object instanceof EntityPlayer)) {
                 continue;
@@ -239,12 +242,21 @@ public final class KnockbackDelayModule extends Module {
                 continue;
             }
 
-            if (minecraft.thePlayer.getDistanceSqToEntity(player) <= NEARBY_PLAYER_RANGE_SQ) {
+            if (minecraft.thePlayer.getDistanceSqToEntity(player) <= nearbyPlayerRangeSq) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private long getTriggerWindowMillis() {
+        return triggerWindow.getValue();
+    }
+
+    private double getNearbyPlayerRangeSq() {
+        double range = nearbyPlayerRange.getValue();
+        return range * range;
     }
 
     private int getRemainingDelayMillis() {

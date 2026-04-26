@@ -10,6 +10,7 @@ import com.lionclient.feature.module.impl.ClickRecorderModule;
 import com.lionclient.feature.module.impl.ConfigModule;
 import com.lionclient.feature.module.impl.HudModule;
 import com.lionclient.feature.module.impl.KillAuraModule;
+import com.lionclient.feature.module.impl.ClutchModule;
 import com.lionclient.feature.module.impl.KnockbackDelayModule;
 import com.lionclient.feature.module.impl.LegitScaffoldModule;
 import com.lionclient.feature.module.impl.PlayerEspModule;
@@ -50,6 +51,7 @@ public final class ModuleManager {
         register(new AntiFireballModule());
         register(new KillAuraModule());
         register(new KnockbackDelayModule());
+        register(ClutchModule.getInstance());
         register(new ClickRecorderModule());
         register(new ClickGuiModule());
         register(new PlayerEspModule());
