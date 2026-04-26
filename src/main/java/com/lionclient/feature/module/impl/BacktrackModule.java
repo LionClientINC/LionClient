@@ -58,7 +58,7 @@ public final class BacktrackModule extends Module {
     private float ghostHeadYaw;
 
     public BacktrackModule() {
-        super("Backtrack", "Delays target movement packets and preserves a ghost position.", Category.COMBAT, Keyboard.KEY_NONE);
+        super("Backtrack [INVDEV]", "Delays target movement packets and preserves a ghost position.", Category.COMBAT, Keyboard.KEY_NONE);
         attackWindow.setVisibility(new java.util.function.BooleanSupplier() {
             @Override
             public boolean getAsBoolean() {

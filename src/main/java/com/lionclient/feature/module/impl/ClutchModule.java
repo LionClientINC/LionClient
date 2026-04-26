@@ -76,7 +76,7 @@ public final class ClutchModule extends Module {
     private boolean forgeRegistered;
 
     private ClutchModule() {
-        super("Clutch", "Automatically places a block when falling.", Category.PLAYER, Keyboard.KEY_NONE);
+        super("Clutch [INVDEV]", "Automatically places a block when falling.", Category.PLAYER, Keyboard.KEY_NONE);
         addSetting(activationMode);
         addSetting(fallDistanceThreshold);
         addSetting(silentAim);
