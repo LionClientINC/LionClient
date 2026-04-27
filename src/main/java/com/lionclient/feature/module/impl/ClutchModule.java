@@ -54,6 +54,7 @@ public final class ClutchModule extends Module {
     private int blocksPlaced;
     private int savedSlot = -1;
     private int moveFreezeTicks;
+    private int groundedClutchTicks;
     private boolean clutching;
     private boolean returningToCamera;
     private float savedCamYaw;
@@ -63,7 +64,7 @@ public final class ClutchModule extends Module {
     private float targetYaw;
     private float targetPitch;
     private boolean rotationActive;
-    private boolean rotationSentLastTick;
+    private int rotationHeldTicks;
     private List<BlockPos> bridgePath;
     private int bridgeIndex;
     private PlacementCandidate bridgeStartPlacement;
@@ -139,6 +140,7 @@ public final class ClutchModule extends Module {
             handleGroundState(player);
             return;
         }
+        groundedClutchTicks = 0;
 
         if (player.motionY >= 0.0D) {
             return;
@@ -154,10 +156,9 @@ public final class ClutchModule extends Module {
             clutching = true;
             blocksPlaced = 0;
             returningToCamera = false;
-            rotationSentLastTick = false;
-            bridgePath = buildBridgePath(player);
-            bridgeIndex = 0;
+            rotationHeldTicks = 0;
             bridgeStartPlacement = null;
+            refreshBridgePlan(player);
             savedSlot = returnToSlot.isEnabled() ? player.inventory.currentItem : -1;
             savedCamYaw = player.rotationYaw;
             savedCamPitch = player.rotationPitch;
@@ -170,7 +171,15 @@ public final class ClutchModule extends Module {
             return;
         }
 
+        if (bridgePath == null || bridgeIndex >= bridgePath.size()) {
+            refreshBridgePlan(player);
+        }
+
         PlacementCandidate placement = findBridgePlacement(player);
+        if (placement == null) {
+            refreshBridgePlan(player);
+            placement = findBridgePlacement(player);
+        }
         if (placement == null) {
             placement = findBestPlacement(player);
         }
@@ -183,14 +192,15 @@ public final class ClutchModule extends Module {
         stepRotation((float) rotationSpeed.getValue());
         applyVisibleRotation();
 
-        float yawError = Math.abs(MathHelper.wrapAngleTo180_float(targetYaw - currentYaw));
-        float pitchError = Math.abs(targetPitch - currentPitch);
-        boolean needsSettleTick = yawError > 2.0F || pitchError > 2.0F;
-        if (needsSettleTick && !rotationSentLastTick) {
-            rotationSentLastTick = true;
+        if (!hasReachedTarget(2.0F)) {
+            rotationHeldTicks = 0;
             return;
         }
-        rotationSentLastTick = false;
+
+        rotationHeldTicks = Math.min(2, rotationHeldTicks + 1);
+        if (rotationHeldTicks < 2) {
+            return;
+        }
 
         MovingObjectPosition hit = rayTraceAtRotation(player, getReach(player), currentYaw, currentPitch);
         if (hit == null
@@ -228,12 +238,18 @@ public final class ClutchModule extends Module {
 
     private void handleGroundState(EntityPlayerSP player) {
         if (clutching) {
+            applyImmediateLandingLock(player);
+            groundedClutchTicks++;
+            if (groundedClutchTicks < 4) {
+                return;
+            }
+            groundedClutchTicks = 0;
             if (savedSlot != -1 && returnToSlot.isEnabled()) {
                 setSelectedSlot(savedSlot);
                 savedSlot = -1;
             }
 
-            moveFreezeTicks = clutchMoveDelay.getValue();
+            moveFreezeTicks = Math.max(1, clutchMoveDelay.getValue());
             clutching = false;
             blocksPlaced = 0;
 
@@ -345,7 +361,8 @@ public final class ClutchModule extends Module {
         AxisAlignedBB trajectoryBox = player.getEntityBoundingBox().addCoord(0.0D, velocityY, 0.0D);
 
         PlacementCandidate best = null;
-        for (int dy = 0; dy >= -2; dy--) {
+        int minDy = blocksPlaced > 0 ? -4 : -2;
+        for (int dy = 0; dy >= minDy; dy--) {
             for (int dx = -4; dx <= 4; dx++) {
                 for (int dz = -4; dz <= 4; dz++) {
                     BlockPos airPos = new BlockPos(blockX + dx, feetY + dy, blockZ + dz);
@@ -368,6 +385,10 @@ public final class ClutchModule extends Module {
                     for (EnumFacing direction : SEARCH_DIRECTIONS) {
                         BlockPos neighbor = airPos.offset(direction);
                         if (!isAttachableBlock(neighbor)) {
+                            continue;
+                        }
+                        Block neighborBlock = mc.theWorld.getBlockState(neighbor).getBlock();
+                        if (neighborBlock instanceof BlockLiquid) {
                             continue;
                         }
 
@@ -653,6 +674,12 @@ public final class ClutchModule extends Module {
         return path;
     }
 
+    private void refreshBridgePlan(EntityPlayerSP player) {
+        bridgeStartPlacement = null;
+        bridgePath = buildBridgePath(player);
+        bridgeIndex = 0;
+    }
+
     private PlacementCandidate findNearestEdge(EntityPlayerSP player) {
         int playerX = MathHelper.floor_double(player.posX);
         int playerY = MathHelper.floor_double(player.posY);
@@ -815,7 +842,7 @@ public final class ClutchModule extends Module {
         rotationActive = false;
         targetYaw = 0.0F;
         targetPitch = 0.0F;
-        rotationSentLastTick = false;
+        rotationHeldTicks = 0;
         ClientRotationHelper.get().clearRequestedRotations();
     }
 
@@ -823,9 +850,10 @@ public final class ClutchModule extends Module {
         blocksPlaced = 0;
         savedSlot = -1;
         moveFreezeTicks = 0;
+        groundedClutchTicks = 0;
         clutching = false;
         returningToCamera = false;
-        rotationSentLastTick = false;
+        rotationHeldTicks = 0;
         bridgePath = null;
         bridgeIndex = 0;
         bridgeStartPlacement = null;
@@ -833,6 +861,17 @@ public final class ClutchModule extends Module {
 
     private boolean shouldLockMovement() {
         return isEnabled() && isPlayerReady() && (clutching || returningToCamera || moveFreezeTicks > 0);
+    }
+
+    private void applyImmediateLandingLock(EntityPlayerSP player) {
+        if (player == null || player.movementInput == null) {
+            return;
+        }
+
+        player.moveForward = 0.0F;
+        player.moveStrafing = 0.0F;
+        player.movementInput.moveForward = 0.0F;
+        player.movementInput.moveStrafe = 0.0F;
     }
 
     private boolean isPlayerReady() {
