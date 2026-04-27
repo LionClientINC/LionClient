@@ -232,7 +232,11 @@ public final class ClutchModule extends Module {
             return;
         }
 
-        event.setForward(0.0F);
+        if (clutching) {
+            event.setForward(resolveReverseForwardInput(mc.thePlayer));
+        } else {
+            event.setForward(0.0F);
+        }
         event.setStrafe(0.0F);
     }
 
@@ -868,10 +872,35 @@ public final class ClutchModule extends Module {
             return;
         }
 
-        player.moveForward = 0.0F;
+        player.moveForward = clutching ? resolveReverseForwardInput(player) : 0.0F;
         player.moveStrafing = 0.0F;
-        player.movementInput.moveForward = 0.0F;
+        player.movementInput.moveForward = player.moveForward;
         player.movementInput.moveStrafe = 0.0F;
+    }
+
+    private float resolveReverseForwardInput(EntityPlayerSP player) {
+        if (player == null) {
+            return 0.0F;
+        }
+
+        double motionX = player.motionX;
+        double motionZ = player.motionZ;
+        double horizontalSpeedSq = motionX * motionX + motionZ * motionZ;
+        if (horizontalSpeedSq < 1.0E-4D) {
+            return 0.0F;
+        }
+
+        double yawRadians = Math.toRadians(player.rotationYaw);
+        double forwardX = -Math.sin(yawRadians);
+        double forwardZ = Math.cos(yawRadians);
+        double projectedForwardMotion = motionX * forwardX + motionZ * forwardZ;
+        if (projectedForwardMotion > 0.01D) {
+            return -1.0F;
+        }
+        if (projectedForwardMotion < -0.01D) {
+            return 1.0F;
+        }
+        return 0.0F;
     }
 
     private boolean isPlayerReady() {
