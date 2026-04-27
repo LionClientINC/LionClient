@@ -2,7 +2,7 @@ package com.lionclient.feature.module.impl;
 
 import com.lionclient.combat.ClientRotationHelper;
 import com.lionclient.event.ClientRotationEvent;
-import com.lionclient.event.PrePlayerInteractEvent;
+import com.lionclient.event.PrePlayerInputEvent;
 import com.lionclient.feature.module.Category;
 import com.lionclient.feature.module.Module;
 import com.lionclient.feature.setting.BooleanSetting;
@@ -14,7 +14,6 @@ import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
-import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.client.C03PacketPlayer;
@@ -63,7 +62,6 @@ public final class ClutchModule extends Module {
     private float targetYaw;
     private float targetPitch;
     private boolean rotationActive;
-    private MovingObjectPosition pendingUseHit;
     private boolean forgeRegistered;
 
     private ClutchModule() {
@@ -122,7 +120,6 @@ public final class ClutchModule extends Module {
             return;
         }
 
-        pendingUseHit = null;
         if (!isPlayerReady()) {
             return;
         }
@@ -182,9 +179,9 @@ public final class ClutchModule extends Module {
             return;
         }
 
-        mc.objectMouseOver = hit;
-        pendingUseHit = hit;
-        blocksPlaced++;
+        if (attemptPlacement(player, hit)) {
+            blocksPlaced++;
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -198,22 +195,13 @@ public final class ClutchModule extends Module {
     }
 
     @SubscribeEvent
-    public void onPrePlayerInteract(PrePlayerInteractEvent event) {
-        if (pendingUseHit == null || !isPlayerReady()) {
+    public void onPrePlayerInput(PrePlayerInputEvent event) {
+        if (!shouldLockMovement()) {
             return;
         }
 
-        EntityPlayerSP player = mc.thePlayer;
-        ItemStack heldItem = player.getHeldItem();
-        if (heldItem == null || !(heldItem.getItem() instanceof ItemBlock)) {
-            pendingUseHit = null;
-            return;
-        }
-
-        player.sendQueue.addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(currentYaw, currentPitch, player.onGround));
-        mc.objectMouseOver = pendingUseHit;
-        KeyBinding.onTick(mc.gameSettings.keyBindUseItem.getKeyCode());
-        pendingUseHit = null;
+        event.setForward(0.0F);
+        event.setStrafe(0.0F);
     }
 
     private void handleGroundState(EntityPlayerSP player) {
@@ -476,6 +464,27 @@ public final class ClutchModule extends Module {
         return hit;
     }
 
+    private boolean attemptPlacement(EntityPlayerSP player, MovingObjectPosition hit) {
+        if (mc.playerController == null || hit == null || hit.hitVec == null) {
+            return false;
+        }
+
+        ItemStack heldItem = player.getHeldItem();
+        if (heldItem == null || !(heldItem.getItem() instanceof ItemBlock)) {
+            return false;
+        }
+
+        player.sendQueue.addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(currentYaw, currentPitch, player.onGround));
+        mc.objectMouseOver = hit;
+
+        if (mc.playerController.onPlayerRightClick(player, mc.theWorld, heldItem, hit.getBlockPos(), hit.sideHit, hit.hitVec)) {
+            player.swingItem();
+            return true;
+        }
+
+        return false;
+    }
+
     private double getReach(EntityPlayerSP player) {
         return player.capabilities.isCreativeMode ? 5.0D : 4.5D;
     }
@@ -516,7 +525,10 @@ public final class ClutchModule extends Module {
         moveFreezeTicks = 0;
         clutching = false;
         returningToCamera = false;
-        pendingUseHit = null;
+    }
+
+    private boolean shouldLockMovement() {
+        return isEnabled() && isPlayerReady() && (clutching || returningToCamera || moveFreezeTicks > 0);
     }
 
     private boolean isPlayerReady() {
