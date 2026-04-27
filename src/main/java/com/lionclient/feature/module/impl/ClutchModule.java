@@ -9,6 +9,8 @@ import com.lionclient.feature.setting.BooleanSetting;
 import com.lionclient.feature.setting.DecimalSetting;
 import com.lionclient.feature.setting.EnumSetting;
 import com.lionclient.feature.setting.NumberSetting;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
@@ -16,7 +18,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
-import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.network.play.client.C09PacketHeldItemChange;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
@@ -62,6 +63,10 @@ public final class ClutchModule extends Module {
     private float targetYaw;
     private float targetPitch;
     private boolean rotationActive;
+    private boolean rotationSentLastTick;
+    private List<BlockPos> bridgePath;
+    private int bridgeIndex;
+    private PlacementCandidate bridgeStartPlacement;
     private boolean forgeRegistered;
 
     private ClutchModule() {
@@ -149,6 +154,10 @@ public final class ClutchModule extends Module {
             clutching = true;
             blocksPlaced = 0;
             returningToCamera = false;
+            rotationSentLastTick = false;
+            bridgePath = buildBridgePath(player);
+            bridgeIndex = 0;
+            bridgeStartPlacement = null;
             savedSlot = returnToSlot.isEnabled() ? player.inventory.currentItem : -1;
             savedCamYaw = player.rotationYaw;
             savedCamPitch = player.rotationPitch;
@@ -161,7 +170,10 @@ public final class ClutchModule extends Module {
             return;
         }
 
-        PlacementCandidate placement = findBestPlacement(player);
+        PlacementCandidate placement = findBridgePlacement(player);
+        if (placement == null) {
+            placement = findBestPlacement(player);
+        }
         if (placement == null) {
             return;
         }
@@ -170,6 +182,15 @@ public final class ClutchModule extends Module {
         setRotationTarget(aim[0], aim[1]);
         stepRotation((float) rotationSpeed.getValue());
         applyVisibleRotation();
+
+        float yawError = Math.abs(MathHelper.wrapAngleTo180_float(targetYaw - currentYaw));
+        float pitchError = Math.abs(targetPitch - currentPitch);
+        boolean needsSettleTick = yawError > 2.0F || pitchError > 2.0F;
+        if (needsSettleTick && !rotationSentLastTick) {
+            rotationSentLastTick = true;
+            return;
+        }
+        rotationSentLastTick = false;
 
         MovingObjectPosition hit = rayTraceAtRotation(player, getReach(player), currentYaw, currentPitch);
         if (hit == null
@@ -180,6 +201,7 @@ public final class ClutchModule extends Module {
         }
 
         if (attemptPlacement(player, hit)) {
+            advanceBridgeState(placement);
             blocksPlaced++;
         }
     }
@@ -323,7 +345,7 @@ public final class ClutchModule extends Module {
         AxisAlignedBB trajectoryBox = player.getEntityBoundingBox().addCoord(0.0D, velocityY, 0.0D);
 
         PlacementCandidate best = null;
-        for (int dy = 3; dy >= -4; dy--) {
+        for (int dy = 0; dy >= -2; dy--) {
             for (int dx = -4; dx <= 4; dx++) {
                 for (int dz = -4; dz <= 4; dz++) {
                     BlockPos airPos = new BlockPos(blockX + dx, feetY + dy, blockZ + dz);
@@ -366,8 +388,11 @@ public final class ClutchModule extends Module {
                                 + (airPos.getZ() + 0.5D - player.posZ) * (airPos.getZ() + 0.5D - player.posZ)
                         );
                         double score = yDeviation * 20.0D + horizontalDistance;
+                        if (dx == 0 && dz == 0) {
+                            score += 6.0D;
+                        }
                         if (best == null || score < best.score) {
-                            best = new PlacementCandidate(neighbor, face, score);
+                            best = new PlacementCandidate(airPos, neighbor, face, score);
                         }
                     }
                 }
@@ -375,6 +400,44 @@ public final class ClutchModule extends Module {
         }
 
         return best;
+    }
+
+    private PlacementCandidate findBridgePlacement(EntityPlayerSP player) {
+        if (bridgePath == null || bridgeIndex >= bridgePath.size()) {
+            return null;
+        }
+
+        while (bridgeIndex < bridgePath.size()) {
+            BlockPos target = bridgePath.get(bridgeIndex);
+            if (!isAirBlock(target)) {
+                bridgeIndex++;
+                continue;
+            }
+
+            PlacementCandidate placement;
+            if (bridgeIndex == 0 && bridgeStartPlacement != null) {
+                placement = bridgeStartPlacement;
+            } else {
+                placement = null;
+                if (bridgeIndex > 0) {
+                    placement = makePlacementAgainst(target, bridgePath.get(bridgeIndex - 1));
+                }
+                if (placement == null) {
+                    placement = findPlacementInfo(target);
+                }
+            }
+
+            if (placement == null) {
+                return null;
+            }
+            if (!isPlacementReachable(player, placement.neighbor, placement.face, getReach(player))) {
+                return null;
+            }
+
+            return placement;
+        }
+
+        return null;
     }
 
     private float[] faceAim(EntityPlayerSP player, BlockPos neighbor, EnumFacing face) {
@@ -474,7 +537,6 @@ public final class ClutchModule extends Module {
             return false;
         }
 
-        player.sendQueue.addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(currentYaw, currentPitch, player.onGround));
         mc.objectMouseOver = hit;
 
         if (mc.playerController.onPlayerRightClick(player, mc.theWorld, heldItem, hit.getBlockPos(), hit.sideHit, hit.hitVec)) {
@@ -483,6 +545,19 @@ public final class ClutchModule extends Module {
         }
 
         return false;
+    }
+
+    private void advanceBridgeState(PlacementCandidate placement) {
+        if (bridgePath == null || bridgeIndex >= bridgePath.size() || placement == null || placement.targetPos == null) {
+            return;
+        }
+
+        if (placement.targetPos.equals(bridgePath.get(bridgeIndex))) {
+            bridgeIndex++;
+            if (bridgeIndex > 0) {
+                bridgeStartPlacement = null;
+            }
+        }
     }
 
     private double getReach(EntityPlayerSP player) {
@@ -503,6 +578,230 @@ public final class ClutchModule extends Module {
         return block.getMaterial() != Material.air && !(block instanceof BlockLiquid);
     }
 
+    private boolean isPlacementReachable(EntityPlayerSP player, BlockPos neighbor, EnumFacing face, double reach) {
+        double eyeX = player.posX;
+        double eyeY = player.posY + player.getEyeHeight();
+        double eyeZ = player.posZ;
+        double hitX = neighbor.getX() + 0.5D + face.getFrontOffsetX() * 0.45D;
+        double hitY = neighbor.getY() + 0.5D + face.getFrontOffsetY() * 0.45D;
+        double hitZ = neighbor.getZ() + 0.5D + face.getFrontOffsetZ() * 0.45D;
+        double deltaX = hitX - eyeX;
+        double deltaY = hitY - eyeY;
+        double deltaZ = hitZ - eyeZ;
+        return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ <= reach * reach;
+    }
+
+    private List<BlockPos> buildBridgePath(EntityPlayerSP player) {
+        PlacementCandidate edge = findNearestEdge(player);
+        if (edge == null || edge.targetPos == null) {
+            return null;
+        }
+
+        double futureX = player.posX + player.motionX;
+        double futureZ = player.posZ + player.motionZ;
+        int playerX = MathHelper.floor_double(futureX);
+        int playerZ = MathHelper.floor_double(futureZ);
+        int estimatedLength = Math.abs(edge.targetPos.getX() - playerX) + Math.abs(edge.targetPos.getZ() - playerZ);
+        if (estimatedLength < 1) {
+            estimatedLength = 1;
+        }
+
+        double predictedY = predictYAfterTicks(player, estimatedLength);
+        int bridgeY = MathHelper.floor_double(predictedY) - 1;
+        int supportY = edge.neighbor.getY();
+        if (bridgeY > supportY) {
+            bridgeY = supportY;
+        }
+
+        BlockPos bridgeStart = new BlockPos(edge.targetPos.getX(), bridgeY, edge.targetPos.getZ());
+        BlockPos playerColumn = new BlockPos(playerX, bridgeY, playerZ);
+        List<BlockPos> path = calculateBridgePath(bridgeStart, playerColumn);
+        if (path.isEmpty()) {
+            return null;
+        }
+
+        double fracX = futureX - Math.floor(futureX);
+        double fracZ = futureZ - Math.floor(futureZ);
+        BlockPos last = path.get(path.size() - 1);
+        if (fracX >= 0.7D) {
+            path.add(new BlockPos(last.getX() + 1, bridgeY, last.getZ()));
+        } else if (fracX <= 0.3D) {
+            path.add(new BlockPos(last.getX() - 1, bridgeY, last.getZ()));
+        }
+
+        last = path.get(path.size() - 1);
+        if (fracZ >= 0.7D) {
+            path.add(new BlockPos(last.getX(), bridgeY, last.getZ() + 1));
+        } else if (fracZ <= 0.3D) {
+            path.add(new BlockPos(last.getX(), bridgeY, last.getZ() - 1));
+        }
+
+        int availableBlocks = countAvailableBlocks(player);
+        if (path.size() > availableBlocks) {
+            path = new ArrayList<BlockPos>(path.subList(0, availableBlocks));
+        }
+        if (path.isEmpty()) {
+            return null;
+        }
+
+        PlacementCandidate startPlacement = findPlacementInfo(path.get(0));
+        if (startPlacement != null) {
+            bridgeStartPlacement = startPlacement;
+        } else {
+            bridgeStartPlacement = new PlacementCandidate(path.get(0), edge.neighbor, edge.face, edge.score);
+        }
+        return path;
+    }
+
+    private PlacementCandidate findNearestEdge(EntityPlayerSP player) {
+        int playerX = MathHelper.floor_double(player.posX);
+        int playerY = MathHelper.floor_double(player.posY);
+        int playerZ = MathHelper.floor_double(player.posZ);
+        PlacementCandidate best = null;
+        double bestScore = Double.MAX_VALUE;
+        int range = 4;
+        double reach = getReach(player);
+
+        for (int dy = -4; dy <= 1; dy++) {
+            for (int dx = -range; dx <= range; dx++) {
+                for (int dz = -range; dz <= range; dz++) {
+                    BlockPos solidPos = new BlockPos(playerX + dx, playerY + dy, playerZ + dz);
+                    if (!isAttachableBlock(solidPos)) {
+                        continue;
+                    }
+
+                    for (EnumFacing face : EnumFacing.values()) {
+                        BlockPos airPos = solidPos.offset(face);
+                        if (!isAirBlock(airPos)) {
+                            continue;
+                        }
+                        if (!isPlacementReachable(player, solidPos, face, reach)) {
+                            continue;
+                        }
+
+                        double horizontalDistance = Math.sqrt(
+                            (airPos.getX() + 0.5D - player.posX) * (airPos.getX() + 0.5D - player.posX)
+                                + (airPos.getZ() + 0.5D - player.posZ) * (airPos.getZ() + 0.5D - player.posZ)
+                        );
+                        double verticalDistance = Math.abs(airPos.getY() - (playerY - 1));
+                        double score = horizontalDistance + verticalDistance * 3.0D;
+                        if (best == null || score < bestScore) {
+                            bestScore = score;
+                            best = new PlacementCandidate(airPos, solidPos, face, score);
+                        }
+                    }
+                }
+            }
+        }
+
+        return best;
+    }
+
+    private PlacementCandidate findPlacementInfo(BlockPos targetPos) {
+        if (!isAirBlock(targetPos)) {
+            return null;
+        }
+
+        EnumFacing[] priorities = new EnumFacing[] {
+            EnumFacing.DOWN,
+            EnumFacing.NORTH,
+            EnumFacing.SOUTH,
+            EnumFacing.EAST,
+            EnumFacing.WEST,
+            EnumFacing.UP
+        };
+        for (EnumFacing face : priorities) {
+            BlockPos neighbor = targetPos.offset(face);
+            if (!isAttachableBlock(neighbor)) {
+                continue;
+            }
+            return new PlacementCandidate(targetPos, neighbor, face.getOpposite(), 0.0D);
+        }
+
+        return null;
+    }
+
+    private PlacementCandidate makePlacementAgainst(BlockPos targetPos, BlockPos neighbor) {
+        if (!isAttachableBlock(neighbor)) {
+            return null;
+        }
+
+        int dx = targetPos.getX() - neighbor.getX();
+        int dy = targetPos.getY() - neighbor.getY();
+        int dz = targetPos.getZ() - neighbor.getZ();
+
+        EnumFacing face;
+        if (dx == 1) {
+            face = EnumFacing.EAST;
+        } else if (dx == -1) {
+            face = EnumFacing.WEST;
+        } else if (dz == 1) {
+            face = EnumFacing.SOUTH;
+        } else if (dz == -1) {
+            face = EnumFacing.NORTH;
+        } else if (dy == 1) {
+            face = EnumFacing.UP;
+        } else if (dy == -1) {
+            face = EnumFacing.DOWN;
+        } else {
+            return null;
+        }
+
+        return new PlacementCandidate(targetPos, neighbor, face, 0.0D);
+    }
+
+    private List<BlockPos> calculateBridgePath(BlockPos from, BlockPos to) {
+        List<BlockPos> path = new ArrayList<BlockPos>();
+        path.add(from);
+
+        int x = from.getX();
+        int z = from.getZ();
+        int y = from.getY();
+        int targetX = to.getX();
+        int targetZ = to.getZ();
+
+        while (x != targetX || z != targetZ) {
+            int dx = targetX - x;
+            int dz = targetZ - z;
+            if (Math.abs(dx) >= Math.abs(dz)) {
+                x += dx > 0 ? 1 : -1;
+            } else {
+                z += dz > 0 ? 1 : -1;
+            }
+            path.add(new BlockPos(x, y, z));
+        }
+
+        return path;
+    }
+
+    private double predictYAfterTicks(EntityPlayerSP player, int ticks) {
+        double y = player.posY;
+        double velocityY = player.motionY;
+        for (int i = 0; i < ticks; i++) {
+            velocityY = (velocityY - 0.08D) * 0.98D;
+            y += velocityY;
+        }
+        return y;
+    }
+
+    private int countAvailableBlocks(EntityPlayerSP player) {
+        int total = 0;
+        for (int slot = 0; slot <= 8; slot++) {
+            ItemStack stack = player.inventory.getStackInSlot(slot);
+            if (stack == null || !(stack.getItem() instanceof ItemBlock)) {
+                continue;
+            }
+
+            Block block = ((ItemBlock) stack.getItem()).getBlock();
+            if (block == null || !block.isFullCube()) {
+                continue;
+            }
+
+            total += stack.stackSize;
+        }
+        return total;
+    }
+
     private void setSelectedSlot(int slot) {
         if (!isPlayerReady() || mc.thePlayer.inventory.currentItem == slot) {
             return;
@@ -516,6 +815,7 @@ public final class ClutchModule extends Module {
         rotationActive = false;
         targetYaw = 0.0F;
         targetPitch = 0.0F;
+        rotationSentLastTick = false;
         ClientRotationHelper.get().clearRequestedRotations();
     }
 
@@ -525,6 +825,10 @@ public final class ClutchModule extends Module {
         moveFreezeTicks = 0;
         clutching = false;
         returningToCamera = false;
+        rotationSentLastTick = false;
+        bridgePath = null;
+        bridgeIndex = 0;
+        bridgeStartPlacement = null;
     }
 
     private boolean shouldLockMovement() {
@@ -567,11 +871,13 @@ public final class ClutchModule extends Module {
     }
 
     private static final class PlacementCandidate {
+        private final BlockPos targetPos;
         private final BlockPos neighbor;
         private final EnumFacing face;
         private final double score;
 
-        private PlacementCandidate(BlockPos neighbor, EnumFacing face, double score) {
+        private PlacementCandidate(BlockPos targetPos, BlockPos neighbor, EnumFacing face, double score) {
+            this.targetPos = targetPos;
             this.neighbor = neighbor;
             this.face = face;
             this.score = score;
