@@ -7,6 +7,7 @@ import com.lionclient.gui.ClickGuiScreen;
 import com.lionclient.gui.HudEditorScreen;
 import com.lionclient.gui.ModernClickGuiScreen;
 import com.lionclient.input.KeybindHandler;
+import com.lionclient.network.KnockbackDelayBuffer;
 import com.lionclient.network.PacketDelayManager;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.client.event.MouseEvent;
@@ -29,6 +30,7 @@ public final class LionClient {
     private static LionClient instance;
     private final ModuleManager moduleManager = new ModuleManager();
     private final PacketDelayManager packetDelayManager = new PacketDelayManager(moduleManager);
+    private final KnockbackDelayBuffer knockbackDelayBuffer = new KnockbackDelayBuffer();
     private final ClickGuiScreen clickGuiScreen = new ClickGuiScreen(moduleManager);
     private final ModernClickGuiScreen modernClickGuiScreen = new ModernClickGuiScreen(moduleManager);
 
@@ -42,6 +44,10 @@ public final class LionClient {
 
     public PacketDelayManager getPacketDelayManager() {
         return packetDelayManager;
+    }
+
+    public KnockbackDelayBuffer getKnockbackDelayBuffer() {
+        return knockbackDelayBuffer;
     }
 
     @EventHandler
@@ -70,6 +76,7 @@ public final class LionClient {
         }
 
         moduleManager.onClientTick();
+        knockbackDelayBuffer.onClientTick();
         packetDelayManager.onClientTick();
     }
 
