@@ -170,9 +170,9 @@ public final class ConfigManager {
                     if (setting instanceof BooleanSetting) {
                         ((BooleanSetting) setting).setEnabled(value.getAsBoolean());
                     } else if (setting instanceof DecimalSetting) {
-                        ((DecimalSetting) setting).setValue(value.getAsDouble());
+                        ((DecimalSetting) setting).setManualValue(value.getAsDouble());
                     } else if (setting instanceof NumberSetting) {
-                        ((NumberSetting) setting).setValue(value.getAsInt());
+                        ((NumberSetting) setting).setManualValue(value.getAsInt());
                     } else if (setting instanceof EnumSetting) {
                         ((EnumSetting<?>) setting).setValueByName(value.getAsString());
                     }

@@ -13,7 +13,7 @@ public final class NumberSetting extends Setting {
         this.min = min;
         this.max = max;
         this.step = step;
-        this.value = clamp(value);
+        this.value = clampToRange(value);
     }
 
     public int getValue() {
@@ -33,12 +33,12 @@ public final class NumberSetting extends Setting {
     }
 
     public void increment() {
-        value = clamp(value + step);
+        value = clampToRange(value + step);
         ConfigManager.saveActiveConfig();
     }
 
     public void decrement() {
-        value = clamp(value - step);
+        value = clampToRange(value - step);
         ConfigManager.saveActiveConfig();
     }
 
@@ -47,7 +47,18 @@ public final class NumberSetting extends Setting {
     }
 
     public void setValue(int value, boolean save) {
-        this.value = clamp(value);
+        this.value = clampToRange(value);
+        if (save) {
+            ConfigManager.saveActiveConfig();
+        }
+    }
+
+    public void setManualValue(int value) {
+        setManualValue(value, true);
+    }
+
+    public void setManualValue(int value, boolean save) {
+        this.value = clampManual(value);
         if (save) {
             ConfigManager.saveActiveConfig();
         }
@@ -58,7 +69,11 @@ public final class NumberSetting extends Setting {
         return Integer.toString(value);
     }
 
-    private int clamp(int input) {
+    private int clampToRange(int input) {
         return Math.max(min, Math.min(max, input));
+    }
+
+    private int clampManual(int input) {
+        return Math.max(min, input);
     }
 }

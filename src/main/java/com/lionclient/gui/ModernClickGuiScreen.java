@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Random;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import org.lwjgl.input.Keyboard;
@@ -41,6 +42,8 @@ public final class ModernClickGuiScreen extends GuiScreen {
     private static final int CONTROL_WIDTH = 240;
     private static final int CONTROL_HEIGHT = 28;
     private static final int CONTROL_PADDING = 12;
+    private static final int VALUE_INPUT_WIDTH = 82;
+    private static final int VALUE_INPUT_HEIGHT = 18;
     private static final int SLIDER_TRACK_HEIGHT = 6;
     private static final int CHECKBOX_SIZE = 14;
     private static final int SWITCH_WIDTH = 28;
@@ -87,6 +90,8 @@ public final class ModernClickGuiScreen extends GuiScreen {
     private Module bindingModule;
     private EnumSetting<?> expandedEnumSetting;
     private Setting draggingSetting;
+    private Setting editingValueSetting;
+    private GuiTextField valueEditor;
     private Integer windowX;
     private Integer windowY;
     private boolean draggingWindow;
@@ -121,7 +126,9 @@ public final class ModernClickGuiScreen extends GuiScreen {
         bindingModule = null;
         expandedEnumSetting = null;
         draggingSetting = null;
+        clearValueEditor();
         draggingWindow = false;
+        Keyboard.enableRepeatEvents(true);
         clearCategoryTransition();
         lastFrameTime = 0L;
         ensureSelection();
@@ -170,8 +177,21 @@ public final class ModernClickGuiScreen extends GuiScreen {
     }
 
     @Override
+    public void updateScreen() {
+        super.updateScreen();
+        if (valueEditor != null) {
+            valueEditor.updateCursorCounter();
+        }
+    }
+
+    @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
         Layout layout = createLayout();
+        if (handleValueEditorMouseClick(layout, mouseX, mouseY, mouseButton)) {
+            super.mouseClicked(mouseX, mouseY, mouseButton);
+            return;
+        }
+
         if (!layout.windowBounds.contains(mouseX, mouseY)) {
             super.mouseClicked(mouseX, mouseY, mouseButton);
             return;
@@ -233,7 +253,25 @@ public final class ModernClickGuiScreen extends GuiScreen {
             return;
         }
 
+        if (editingValueSetting != null) {
+            if (keyCode == Keyboard.KEY_ESCAPE) {
+                clearValueEditor();
+                return;
+            }
+
+            if (keyCode == Keyboard.KEY_RETURN || keyCode == Keyboard.KEY_NUMPADENTER) {
+                commitValueEditor(true);
+                return;
+            }
+        }
+
         if (handleCloseKeybind(keyCode)) {
+            return;
+        }
+
+        if (editingValueSetting != null && valueEditor != null) {
+            valueEditor.textboxKeyTyped(typedChar, keyCode);
+            valueEditor.setText(sanitizeValueText(valueEditor.getText(), editingValueSetting instanceof DecimalSetting));
             return;
         }
 
@@ -267,6 +305,8 @@ public final class ModernClickGuiScreen extends GuiScreen {
 
     @Override
     public void onGuiClosed() {
+        commitValueEditor(true);
+        Keyboard.enableRepeatEvents(false);
         super.onGuiClosed();
         draggingWindow = false;
         draggingSetting = null;
@@ -397,9 +437,18 @@ public final class ModernClickGuiScreen extends GuiScreen {
                 }
 
                 if ((setting instanceof NumberSetting || setting instanceof DecimalSetting) && mouseButton == 0) {
+                    Bounds valueBounds = getValueInputBounds(rowBounds);
+                    if (valueBounds.contains(mouseX, mouseY)) {
+                        expandedEnumSetting = null;
+                        draggingSetting = null;
+                        openValueEditor(setting, valueBounds);
+                        return true;
+                    }
+
                     Bounds sliderBounds = getSliderBounds(rowBounds);
                     if (sliderBounds.contains(mouseX, mouseY) || rowBounds.contains(mouseX, mouseY)) {
                         expandedEnumSetting = null;
+                        clearValueEditor();
                         draggingSetting = setting;
                         applySliderValue(setting, mouseX, sliderBounds, false);
                         return true;
@@ -669,6 +718,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
 
         if (setting instanceof NumberSetting || setting instanceof DecimalSetting) {
             Bounds sliderBounds = getSliderBounds(rowBounds);
+            Bounds valueBounds = getValueInputBounds(rowBounds);
             if (draggingSetting == setting) {
                 applySliderValue(setting, mouseX, sliderBounds, false);
             }
@@ -676,8 +726,36 @@ public final class ModernClickGuiScreen extends GuiScreen {
             float target = getSliderTarget(setting);
             float sliderProgress = getAnimation(sliderAnimations, setting, target, 14.0F);
             String valueText = setting.getValueText();
+            boolean editingValue = editingValueSetting == setting && valueEditor != null;
+            boolean valueHovered = valueBounds.contains(mouseX, mouseY);
             this.fontRendererObj.drawString(setting.getName(), rowBounds.left + CONTROL_PADDING, rowBounds.top + 8, scaleAlpha(TEXT_PRIMARY, alphaScale));
-            this.fontRendererObj.drawString(valueText, rowBounds.right - CONTROL_PADDING - this.fontRendererObj.getStringWidth(valueText), rowBounds.top + 8, scaleAlpha(accent, alphaScale));
+            drawRoundedRect(
+                valueBounds.left,
+                valueBounds.top,
+                valueBounds.right,
+                valueBounds.bottom,
+                4.0F,
+                scaleAlpha(editingValue ? withAlpha(SURFACE_INPUT, 236) : withAlpha(CONTROL_BACKGROUND, valueHovered ? 224 : 204), alphaScale)
+            );
+            drawRoundedOutline(
+                valueBounds.left,
+                valueBounds.top,
+                valueBounds.right,
+                valueBounds.bottom,
+                4.0F,
+                scaleAlpha(editingValue ? withAlpha(accent, 210) : withAlpha(valueHovered ? CONTROL_BORDER_LIGHT : CONTROL_BORDER, 255), alphaScale)
+            );
+            if (editingValue) {
+                syncValueEditorBounds(valueBounds);
+                valueEditor.drawTextBox();
+            } else {
+                this.fontRendererObj.drawString(
+                    valueText,
+                    valueBounds.right - 6 - this.fontRendererObj.getStringWidth(valueText),
+                    valueBounds.top + (valueBounds.getHeight() - this.fontRendererObj.FONT_HEIGHT) / 2,
+                    scaleAlpha(accent, alphaScale)
+                );
+            }
             Gui.drawRect(sliderBounds.left, sliderBounds.top, sliderBounds.right, sliderBounds.bottom, scaleAlpha(0xFF000000 | CONTROL_BORDER, alphaScale));
             Gui.drawRect(sliderBounds.left, sliderBounds.top, sliderBounds.left + Math.round(sliderBounds.getWidth() * sliderProgress), sliderBounds.bottom, scaleAlpha(withAlpha(accent, 205), alphaScale));
             return;
@@ -866,7 +944,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
             if (numberSetting.getMax() == numberSetting.getMin()) {
                 return 0.0F;
             }
-            return (numberSetting.getValue() - numberSetting.getMin()) / (float) (numberSetting.getMax() - numberSetting.getMin());
+            return clamp((numberSetting.getValue() - numberSetting.getMin()) / (float) (numberSetting.getMax() - numberSetting.getMin()), 0.0F, 1.0F);
         }
 
         if (setting instanceof DecimalSetting) {
@@ -874,7 +952,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
             if (decimalSetting.getMax() == decimalSetting.getMin()) {
                 return 0.0F;
             }
-            return (float) ((decimalSetting.getValue() - decimalSetting.getMin()) / (decimalSetting.getMax() - decimalSetting.getMin()));
+            return clamp((float) ((decimalSetting.getValue() - decimalSetting.getMin()) / (decimalSetting.getMax() - decimalSetting.getMin())), 0.0F, 1.0F);
         }
 
         return 0.0F;
@@ -900,7 +978,7 @@ public final class ModernClickGuiScreen extends GuiScreen {
         }
 
         if (min != null && max != null && max.getValue() < min.getValue()) {
-            max.setValue(min.getValue(), false);
+            max.setManualValue(min.getValue(), false);
         }
     }
 
@@ -1066,10 +1144,127 @@ public final class ModernClickGuiScreen extends GuiScreen {
         return new Bounds(rowBounds.left + CONTROL_PADDING, top, rowBounds.left + CONTROL_PADDING + buttonWidth, top + CONTROL_HEIGHT);
     }
 
+    private Bounds getValueInputBounds(Bounds rowBounds) {
+        int right = rowBounds.right - CONTROL_PADDING;
+        int top = rowBounds.top + 5;
+        return new Bounds(right - VALUE_INPUT_WIDTH, top, right, top + VALUE_INPUT_HEIGHT);
+    }
+
     private Bounds getSliderBounds(Bounds rowBounds) {
         int sliderWidth = Math.min(CONTROL_WIDTH, rowBounds.getWidth() - (CONTROL_PADDING * 2));
         int top = rowBounds.top + 27;
         return new Bounds(rowBounds.left + CONTROL_PADDING, top, rowBounds.left + CONTROL_PADDING + sliderWidth, top + SLIDER_TRACK_HEIGHT);
+    }
+
+    private boolean handleValueEditorMouseClick(Layout layout, int mouseX, int mouseY, int mouseButton) {
+        if (editingValueSetting == null || valueEditor == null) {
+            return false;
+        }
+
+        Bounds valueBounds = findValueInputBounds(layout, editingValueSetting);
+        if (valueBounds != null && valueBounds.contains(mouseX, mouseY)) {
+            if (mouseButton == 0) {
+                syncValueEditorBounds(valueBounds);
+                valueEditor.mouseClicked(mouseX, mouseY, mouseButton);
+            }
+            return true;
+        }
+
+        commitValueEditor(true);
+        return false;
+    }
+
+    private Bounds findValueInputBounds(Layout layout, Setting setting) {
+        if (selectedModule == null || setting == null) {
+            return null;
+        }
+
+        int rowY = layout.settingsContentTop - Math.round(settingsScroll);
+        List<Setting> visibleSettings = getVisibleSettings(selectedModule);
+        for (Setting visibleSetting : visibleSettings) {
+            int rowHeight = getSettingHeight(visibleSetting);
+            if (visibleSetting == setting && (visibleSetting instanceof NumberSetting || visibleSetting instanceof DecimalSetting)) {
+                Bounds rowBounds = new Bounds(layout.settingsPaneX + 10, rowY, layout.settingsPaneRight - 10, rowY + rowHeight);
+                return getValueInputBounds(rowBounds);
+            }
+            rowY += rowHeight + SETTING_ROW_GAP;
+        }
+
+        return null;
+    }
+
+    private void openValueEditor(Setting setting, Bounds valueBounds) {
+        editingValueSetting = setting;
+        valueEditor = new GuiTextField(0, this.fontRendererObj, valueBounds.left + 5, valueBounds.top + 5, VALUE_INPUT_WIDTH - 10, VALUE_INPUT_HEIGHT - 8);
+        valueEditor.setEnableBackgroundDrawing(false);
+        valueEditor.setCanLoseFocus(false);
+        valueEditor.setMaxStringLength(24);
+        valueEditor.setTextColor(TEXT_PRIMARY);
+        valueEditor.setDisabledTextColour(TEXT_PRIMARY);
+        valueEditor.setFocused(true);
+        valueEditor.setText(setting.getValueText());
+        valueEditor.setCursorPositionEnd();
+    }
+
+    private void syncValueEditorBounds(Bounds valueBounds) {
+        if (valueEditor == null) {
+            return;
+        }
+
+        valueEditor.xPosition = valueBounds.left + 5;
+        valueEditor.yPosition = valueBounds.top + 5;
+    }
+
+    private void clearValueEditor() {
+        editingValueSetting = null;
+        valueEditor = null;
+    }
+
+    private void commitValueEditor(boolean save) {
+        if (editingValueSetting == null || valueEditor == null) {
+            return;
+        }
+
+        String text = valueEditor.getText().trim();
+        if (!text.isEmpty() && !"-".equals(text) && !".".equals(text) && !"-.".equals(text)) {
+            try {
+                if (editingValueSetting instanceof NumberSetting) {
+                    ((NumberSetting) editingValueSetting).setManualValue(Integer.parseInt(text), save);
+                    normalizeNumberRanges(selectedModule);
+                } else if (editingValueSetting instanceof DecimalSetting) {
+                    ((DecimalSetting) editingValueSetting).setManualValue(Double.parseDouble(text), save);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+
+        clearValueEditor();
+    }
+
+    private String sanitizeValueText(String input, boolean allowDecimal) {
+        StringBuilder builder = new StringBuilder();
+        boolean hasDecimal = false;
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (Character.isDigit(c)) {
+                builder.append(c);
+                continue;
+            }
+
+            if (c == '-' && builder.length() == 0) {
+                builder.append(c);
+                continue;
+            }
+
+            if (allowDecimal && c == '.' && !hasDecimal) {
+                if (builder.length() == 0 || (builder.length() == 1 && builder.charAt(0) == '-')) {
+                    builder.append('0');
+                }
+                builder.append('.');
+                hasDecimal = true;
+            }
+        }
+        return builder.toString();
     }
 
     private void drawOutline(int left, int top, int right, int bottom, int color) {

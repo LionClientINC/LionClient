@@ -341,7 +341,7 @@ public final class ClickGuiScreen extends GuiScreen {
             }
 
             if (min != null && max != null && max.getValue() < min.getValue()) {
-                max.setValue(min.getValue());
+                max.setManualValue(min.getValue());
             }
         }
 

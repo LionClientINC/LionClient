@@ -234,7 +234,7 @@ public final class RightClickerModule extends Module {
 
     private void normalizeRanges() {
         if (maxCps.getValue() < minCps.getValue()) {
-            maxCps.setValue(minCps.getValue());
+            maxCps.setManualValue(minCps.getValue());
         }
     }
 
