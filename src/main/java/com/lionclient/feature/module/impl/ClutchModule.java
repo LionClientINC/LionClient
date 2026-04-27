@@ -68,6 +68,7 @@ public final class ClutchModule extends Module {
     private List<BlockPos> bridgePath;
     private int bridgeIndex;
     private PlacementCandidate bridgeStartPlacement;
+    private boolean slotSwitchPending;
     private boolean forgeRegistered;
 
     private ClutchModule() {
@@ -113,7 +114,8 @@ public final class ClutchModule extends Module {
 
         EntityPlayerSP player = mc.thePlayer;
         if (savedSlot != -1 && player != null && returnToSlot.isEnabled()) {
-            setSelectedSlot(savedSlot);
+            player.sendQueue.addToSendQueue(new C09PacketHeldItemChange(savedSlot));
+            player.inventory.currentItem = savedSlot;
         }
 
         resetState();
@@ -340,7 +342,12 @@ public final class ClutchModule extends Module {
     private boolean ensureHoldingBlock(EntityPlayerSP player) {
         ItemStack heldItem = player.getHeldItem();
         if (heldItem != null && heldItem.getItem() instanceof ItemBlock) {
+            slotSwitchPending = false;
             return true;
+        }
+
+        if (slotSwitchPending) {
+            return false;
         }
 
         int slot = findBlockSlot(player);
@@ -349,7 +356,8 @@ public final class ClutchModule extends Module {
         }
 
         setSelectedSlot(slot);
-        return true;
+        slotSwitchPending = true;
+        return false;
     }
 
     private PlacementCandidate findBestPlacement(EntityPlayerSP player) {
@@ -838,8 +846,10 @@ public final class ClutchModule extends Module {
             return;
         }
 
-        mc.thePlayer.sendQueue.addToSendQueue(new C09PacketHeldItemChange(slot));
         mc.thePlayer.inventory.currentItem = slot;
+        if (mc.playerController != null) {
+            mc.playerController.updateController();
+        }
     }
 
     private void clearRotationState() {
@@ -855,6 +865,7 @@ public final class ClutchModule extends Module {
         savedSlot = -1;
         moveFreezeTicks = 0;
         groundedClutchTicks = 0;
+        slotSwitchPending = false;
         clutching = false;
         returningToCamera = false;
         rotationHeldTicks = 0;
